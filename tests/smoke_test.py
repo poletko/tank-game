@@ -132,4 +132,72 @@ assert gh.hp == tanks.GHOUL_HP, "ghoul should regenerate a hit in 10 s"
 for _ in range(tanks.GHOUL_HP):
     g.hit_ghoul(gh, tanks.Bullet(t, gh.x, gh.y, 0))
 assert gh.dead and not g.ghouls
+
+# ---- race: 6 bots follow the centerline and shoot whoever is close
+g.to_lobby()
+g.mode = "race"
+g.players = [tanks.Player(i, pid) for i, pid in enumerate(fake)]
+for _ in range(10):   # every track needs ramps and room for the whole grid
+    g.new_round()
+    assert g.track.ramps and len(g.spectators) > 20
+    for p in g.players:
+        assert g.track.onroad(p.tank.x, p.tank.y), "grid slot off the road"
+g.start_match()
+max_z = max_slide = 0.0
+splats_before = 0
+t0, frames = time.time(), 0
+for i in range(60 * 120):
+    tr = g.track
+    for p in g.players:
+        t, pad = p.tank, g.pads[p.pad_id]
+        tx, ty = tr.pts[(t.seg + 9) % tr.n]
+        d = math.hypot(tx - t.x, ty - t.y) or 1
+        pad.move, pad.pressed, pad.held = ((tx - t.x) / d, (ty - t.y) / d), set(), set()
+        o = min((q.tank for q in g.players if q.tank is not t), key=lambda o: (o.x - t.x) ** 2 + (o.y - t.y) ** 2)
+        pad.aim = math.atan2(o.y - t.y, o.x - t.x)
+        if math.hypot(o.x - t.x, o.y - t.y) < 150 and random.random() < 0.05:
+            pad.held = {"fire"}
+    g.update(1 / 60)
+    g.draw()
+    frames += 1
+    for p in g.players:
+        t = p.tank
+        max_z = max(max_z, t.z)
+        max_slide = max(max_slide, abs(-t.vx * math.sin(t.angle) + t.vy * math.cos(t.angle)))
+        assert 0 <= t.ammo <= tanks.MAX_AMMO and t.hp == tanks.TANK_HP, "race shells must not damage"
+    if shots and i == 600:
+        pygame.image.save(g.screen, os.path.join(shots, "race.png"))
+    if g.state == "roundover":
+        break
+fps = frames / (time.time() - t0)
+splats = sum(p.kills for p in g.players)
+print(f"race: frames={frames} fps={fps:.0f} winner={g.round_winner and g.round_winner.cname} time={g.race_time:.1f}s "
+      f"max height={max_z:.0f} max slide={max_slide:.0f} splats={splats}")
+assert g.state == "roundover" and g.round_winner and g.round_winner.tank.lap >= tanks.RACE_LAPS
+assert max_z > 15, "nobody jumped"
+assert max_slide > 40, "tanks never drifted"
+
+# a shell only bumps: it pushes the target, no damage
+g.new_round()
+g.state = "play"
+a, b = g.players[0].tank, g.players[1].tank
+a.vx = a.vy = 0.0
+shell = tanks.Bullet(b, a.x - 5, a.y, 0)
+g.bump_tank(a, shell)
+assert a.vx > 200 and a.hp == tanks.TANK_HP
+
+# touching or shooting a spectator splatters it into limbs
+gh = g.spectators[0]
+b.x, b.y, b.z, b.vx, b.vy = gh.x, gh.y, 0.0, 100.0, 0.0
+n_before, kills_before = len(g.spectators), b.player.kills
+g.update_spectators(1 / 60)
+assert gh not in g.spectators and len(g.spectators) == n_before - 1 and b.player.kills == kills_before + 1
+assert g.gibs, "no limbs flew"
+gh = g.spectators[0]
+g.bullets = [tanks.Bullet(a, gh.x - 10, gh.y, 0)]
+g.update_race_bullets(1 / 60)
+assert gh not in g.spectators and not g.bullets
+for _ in range(200):
+    g.update_gibs(1 / 60)
+assert not g.gibs, "limbs should land and stay as decals"
 print("OK")

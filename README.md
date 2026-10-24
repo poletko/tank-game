@@ -34,13 +34,22 @@ F11 toggles fullscreen. ESC returns to the lobby, or quits from the lobby.
 - Controllers can be plugged in at any time. If one disconnects mid-match, press A on any free pad to take over that player.
 
 ## Co-op mode
-Press **Y** (controller) or **Tab** (keyboard) in the lobby to switch from VERSUS to CO-OP. All the tanks team up against waves of mummies, zombies, vampires and ghosts.
+Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VERSUS, CO-OP and RACE. All the tanks team up against waves of mummies, zombies, vampires and ghosts.
 - Wave 1 has one ghoul, and each cleared wave adds one more (wave N brings N ghouls).
 - A ghoul takes 5 hits to kill and regenerates 1 hit every 10 s. Each hit slows it to half speed for 3 s.
 - Ghouls move at 60% of tank speed and chase the closest tank. Walkers go around walls and claw through bricks if they have to. Ghosts float straight through walls.
 - A ghoul's touch costs a tank 1 HP. Tanks have 5 HP in co-op, and there's no friendly fire.
 - Ammo refills at the start of each wave, crates still appear, and killed ghouls sometimes drop a +3 ammo box.
 - Fallen tanks come back at the next wave. When every tank is down the game ends and shows the wave you reached and each player's kills.
+
+## Race mode
+The third mode in the lobby. Smaller, faster tanks race around a randomly generated circuit that fills the whole screen.
+- 5 laps; the first tank across the line wins the race, and the first to 3 race wins takes the match. A new track is generated for every race.
+- Tanks accelerate quickly and drift: steer hard at speed and the back slides out, leaving skid marks. Grass slows you down.
+- It's pseudo-3D: yellow-and-black ramps launch tanks into the air, where they can't steer, and they get bigger as they rise, with their shadow left on the ground. Hit a ramp faster to fly further.
+- Shells don't do damage. They knock the tank they hit sideways and pop it off the ground, so use them to push rivals off the track. 10 shells, refilled each lap.
+- The crowd lining the track is ghouls. Hit one with a shell or touch it with your tank and it bursts into a red stain and scattered limbs that stay for the rest of the race. The HUD keeps count.
+- Cutting across the grass doesn't count as progress. A tank that stays far off the track for 2 s is put back on it.
 
 ## License
 Public domain ([The Unlicense](LICENSE)). Anyone can do whatever they want with this game: copy it, change it, share it or sell it, with no conditions and no credit needed.
