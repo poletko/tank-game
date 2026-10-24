@@ -75,6 +75,16 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 - Race tanks draw from `Player.race_sprite` (pre-rotated in 5 degree steps). Rotating them live each frame dropped
   the race below 120 FPS. They're only rotated live while airborne, because of the scaling.
 
+## Math break
+- `quiz_clock` counts seconds in `countdown`/`play`. Once it passes `QUIZ_INTERVAL` (300 s), `update()` opens a
+  `Quiz` at the next `at_break()`: lobby, roundover, matchover, coopover, or an empty co-op wave break. While
+  `self.quiz` is set, `update()` only runs `update_quiz`, so the game is frozen. The clock resets when a question
+  is answered correctly. The user asked for this: keep it mandatory and never open it mid-action.
+- `make_question()` returns `(text, answer, unit)` in Slovenian at the level of a finished 4th grade; answers must
+  fit `QUIZ_DIGITS`. The smoke test checks 5000 random questions. Entry uses the pad's edge-triggered
+  `up/down/left/right` buttons (derived from the stick and D-pad in `Pad.poll`), and keyboard digits come in as
+  KEYDOWN events in `run()`.
+
 ## Conventions
 - Keep it a single file with no dependencies beyond pygame and no external assets.
 - Match the existing style: plain classes, short comments only where something is non-obvious.

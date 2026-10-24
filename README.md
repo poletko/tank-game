@@ -51,5 +51,10 @@ The third mode in the lobby. Smaller, faster tanks race around a randomly genera
 - The crowd lining the track is ghouls. Hit one with a shell or touch it with your tank and it bursts into a red stain and scattered limbs that stay for the rest of the race. The HUD keeps count.
 - Cutting across the grass doesn't count as progress. A tank that stays far off the track for 2 s is put back on it.
 
+## Math break
+After every 5 minutes of play, a math question appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian: adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems.
+- Any player can answer. The answer goes into five digit boxes: stick or D-pad **up/down** changes the selected digit, **left/right** moves between digits, and **A** or **START** submits. On the keyboard you can also type the digits, use Backspace, and press Enter.
+- The game stays frozen until the answer is right. After 3 wrong tries the solution is shown and a new question is asked.
+
 ## License
 Public domain ([The Unlicense](LICENSE)). Anyone can do whatever they want with this game: copy it, change it, share it or sell it, with no conditions and no credit needed.

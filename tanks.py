@@ -8,6 +8,8 @@ Y / TAB in the lobby cycles VERSUS, CO-OP (tanks vs waves of undead) and RACE.
 Keyboard (two players): P1 WASD + Q/E turret + SPACE fire + X leave, P2 arrows + ,/. turret + RCTRL fire + DELETE leave
 ENTER starts / pauses. Up to 6 players in total.
 F11 toggles fullscreen, ESC returns to lobby / quits.
+Every 5 minutes of play a math question (Slovenian, end of 4th grade) appears at the next break between
+rounds or waves. Stick/D-pad up/down changes a digit, left/right picks the digit, A or START answers.
 """
 import heapq
 import math
@@ -95,6 +97,11 @@ TREES = 14
 GRASS = (62, 110, 52)
 ASPHALT = (66, 68, 74)
 ORDINALS = ('1st', '2nd', '3rd', '4th', '5th', '6th')
+
+# math break
+QUIZ_INTERVAL = 300.0       # seconds of play between questions
+QUIZ_DIGITS = 5
+QUIZ_TRIES = 3              # wrong answers before the solution is shown and a new question asked
 MAX_PLAYERS = 6
 
 PLAYER_COLORS = [
@@ -181,6 +188,115 @@ def make_vignette():
             d = math.hypot((x - 31.5) / 32, (y - 17.5) / 18)
             v.set_at((x, y), (0, 0, 0, int(clamp((d - 0.55) / 0.65, 0, 1) ** 1.5 * 160)))
     return pygame.transform.smoothscale(v, (W, H - HUD)).convert_alpha()
+
+
+# ---------------------------------------------------------------- math questions
+
+def fmt(n):
+    """Slovenian style: thousands separated by a space."""
+    return f"{n:,}".replace(",", " ")
+
+
+def make_question():
+    """A math question at the level of a finished 4th grade in Slovenia: (text, answer, unit)."""
+    r = random.randint
+    kind = random.choice(('add', 'sub', 'table', 'mul', 'div', 'fraction', 'units', 'perimeter',
+                          'order', 'round', 'missing', 'word', 'word'))
+    if kind == 'add':
+        a = r(1000, 8999)
+        b = r(100, 9999 - a)
+        return f"{fmt(a)} + {fmt(b)} = ?", a + b, ""
+    if kind == 'sub':
+        a = r(1000, 10000)
+        b = r(100, a - 1)
+        return f"{fmt(a)} - {fmt(b)} = ?", a - b, ""
+    if kind == 'table':
+        a, b = r(2, 10), r(2, 10)
+        return random.choice(((f"{a} · {b} = ?", a * b), (f"{a * b} : {b} = ?", a)))[0:2] + ("",)
+    if kind == 'mul':
+        b = r(2, 9)
+        a = r(101, 9999 // b)
+        return f"{fmt(a)} · {b} = ?", a * b, ""
+    if kind == 'div':
+        b = r(2, 9)
+        q = r(21, 9999 // b)
+        return f"{fmt(q * b)} : {b} = ?", q, ""
+    if kind == 'fraction':
+        d = r(2, 10)
+        n = d * r(2, 12)
+        return f"Koliko je 1/{d} od {n}?", n // d, ""
+    if kind == 'units':
+        a, b = r(2, 9), r(11, 99)
+        return random.choice((
+            (f"{a} m {b} cm = ? cm", a * 100 + b, "cm"),
+            (f"{a} kg = ? g", a * 1000, "g"),
+            (f"{a} kg {b * 10} g = ? g", a * 1000 + b * 10, "g"),
+            (f"{a} l {b % 10} dl = ? dl", a * 10 + b % 10, "dl"),
+            (f"{a % 4 + 1} h {b % 60} min = ? min", (a % 4 + 1) * 60 + b % 60, "min"),
+            (f"{a} km = ? m", a * 1000, "m"),
+            (f"{a} dm = ? cm", a * 10, "cm"),
+            (f"{a} cm = ? mm", a * 10, "mm"),
+            (f"{a} € {b} centov = ? centov", a * 100 + b, "centov"),
+        ))
+    if kind == 'perimeter':
+        a, b = r(2, 20), r(2, 20)
+        if a == b:
+            return f"Kvadrat ima stranico {a} cm. Koliko meri njegov obseg?", 4 * a, "cm"
+        return f"Pravokotnik ima stranici {a} cm in {b} cm. Koliko meri njegov obseg?", 2 * (a + b), "cm"
+    if kind == 'order':
+        a, b, c = r(2, 50), r(2, 10), r(2, 10)
+        return random.choice(((f"{a} + {b} · {c} = ?", a + b * c),
+                              (f"{b * c} : {c} + {a} = ?", b + a),
+                              (f"({a % 20 + 1} + {b}) · {c} = ?", (a % 20 + 1 + b) * c)))[0:2] + ("",)
+    if kind == 'round':
+        n = r(1001, 9999)
+        name, p = random.choice((("desetice", 10), ("stotice", 100), ("tisočice", 1000)))
+        return f"Zaokroži število {fmt(n)} na {name}.", (n + p // 2) // p * p, ""
+    if kind == 'missing':
+        a, b = r(100, 899), r(100, 899)
+        k, m = r(2, 10), r(2, 10)
+        return random.choice(((f"Katero število manjka?   □ + {b} = {a + b}", a),
+                              (f"Katero število manjka?   {k} · □ = {k * m}", m),
+                              (f"Katero število manjka?   {a + b} - □ = {a}", b)))[0:2] + ("",)
+    k, m = r(2, 6), r(5, 8)
+    a, b, c = r(30, 90), r(5, 25), r(5, 25)
+    p, n = r(2, 9), r(5, 12)
+    pages, read = r(120, 400), r(20, 110)
+    return random.choice((
+        (f"V razredu je {k * m} učencev. Učiteljica jih razdeli v skupine po {k}. Koliko je skupin?", m, ""),
+        (f"Zvezek stane {p} €. Koliko stane {n} zvezkov?", p * n, "€"),
+        (f"Na kmetiji je {n} krav. Koliko nog imajo vse krave skupaj?", 4 * n, ""),
+        (f"Na dvorišču je {n} kokoši. Koliko nog imajo vse kokoši skupaj?", 2 * n, ""),
+        (f"Jan je imel {a} sličic. Prijatelju jih je podaril {b}. Koliko sličic mu je ostalo?", a - b, ""),
+        (f"Na avtobusu je {a} potnikov. Na postaji jih {b} izstopi in {c} vstopi. Koliko potnikov je zdaj na avtobusu?",
+         a - b + c, ""),
+        (f"Teden ima 7 dni. Koliko dni je v {n} tednih?", 7 * n, ""),
+        (f"Knjiga ima {pages} strani. Lana je prebrala {read} strani. Koliko strani mora še prebrati?", pages - read, ""),
+        (f"Mama je kupila {n} jabolk po {p * 10} centov. Koliko centov je plačala?", n * p * 10, "centov"),
+    ))
+
+
+class Quiz:
+    """A math question answered on a row of digit wheels, so any controller can enter it."""
+
+    def __init__(self):
+        self.new_question()
+
+    def new_question(self):
+        self.text, self.answer, self.unit = make_question()
+        self.digits = [0] * QUIZ_DIGITS
+        self.cursor = QUIZ_DIGITS - 1
+        self.tries = 0
+        self.solved = 0.0       # counts down after a correct answer, then the game resumes
+
+    def value(self):
+        return int("".join(map(str, self.digits)))
+
+    def type_digit(self, d):   # keyboard: digits shift in from the right like a calculator
+        self.digits = self.digits[1:] + [d]
+
+    def backspace(self):
+        self.digits = [0] + self.digits[:-1]
 
 
 # ---------------------------------------------------------------- sound
@@ -313,6 +429,14 @@ class Pad:
             if keys[pygame.K_RETURN] or keys[pygame.K_KP_ENTER]:
                 held.add('start')
         self.move = apply_deadzone(mx, my)
+        if mx < -0.6:   # directions as buttons, for menus (the math break)
+            held.add('left')
+        elif mx > 0.6:
+            held.add('right')
+        if my < -0.6:
+            held.add('up')
+        elif my > 0.6:
+            held.add('down')
         self.aim = aim
         self.turret_rot = rot
         self.pressed = held - self.held
@@ -1187,6 +1311,9 @@ class Game:
                 pygame.draw.circle(sp, col, (random.randint(10, 30), random.randint(10, 30)), random.randint(3, 8))
             self.splats[kind] = sp
         self.text_cache = {}
+        self.quiz = None
+        self.quiz_clock = 0.0    # seconds played since the last math question
+        self.quiz_msg = None     # [text, color]
         self.track = None
         self.spectators = []
         self.gibs = []       # [x, y, vx, vy, z, vz, angle, spin, surf] flying limbs
@@ -1336,6 +1463,14 @@ class Game:
     def update(self, dt):
         self.now += dt
         self.shake = max(0.0, self.shake - dt * 1.8)
+        if self.quiz:
+            self.update_quiz(dt)
+            return
+        if self.quiz_clock >= QUIZ_INTERVAL and self.at_break():
+            self.quiz = Quiz()
+            self.quiz_msg = None
+            self.sounds.play('wave')
+            return
 
         if self.state == 'lobby':
             self.update_lobby()
@@ -1352,6 +1487,8 @@ class Game:
                         return
         if self.paused:
             return
+        if self.state in ('countdown', 'play'):
+            self.quiz_clock += dt
 
         if self.state == 'countdown':
             self.timer -= dt
@@ -1418,6 +1555,55 @@ class Game:
                         self.round_winner.score += 1
                     self.state = 'roundover'
                     self.timer = 3.0
+
+    def at_break(self):
+        """Moments where a math question doesn't interrupt the action."""
+        if self.state in ('lobby', 'roundover', 'matchover', 'coopover'):
+            return True
+        return (self.mode == 'coop' and self.state == 'play' and self.wave_break > 0
+                and not self.ghouls and self.wave_to_spawn == 0 and self.ending is None)
+
+    def update_quiz(self, dt):
+        q = self.quiz
+        if q.solved > 0:
+            q.solved -= dt
+            if q.solved <= 0:
+                self.quiz = None
+                self.quiz_clock = 0.0
+            return
+        # anyone can answer: every connected pad and both keyboard halves
+        for pad in self.pads.values():
+            pr = pad.pressed
+            if 'up' in pr:
+                q.digits[q.cursor] = (q.digits[q.cursor] + 1) % 10
+            if 'down' in pr:
+                q.digits[q.cursor] = (q.digits[q.cursor] - 1) % 10
+            if 'left' in pr:
+                q.cursor = max(0, q.cursor - 1)
+            if 'right' in pr:
+                q.cursor = min(QUIZ_DIGITS - 1, q.cursor + 1)
+            if pr & {'up', 'down', 'left', 'right'}:
+                self.sounds.play('empty')
+            if pr & {'a', 'start'}:
+                self.submit_quiz()
+                return
+
+    def submit_quiz(self):
+        q = self.quiz
+        if q.value() == q.answer:
+            q.solved = 1.5
+            self.quiz_msg = [random.choice(("Pravilno! Bravo!", "Odlično!", "Pravilno, kar tako naprej!")), (120, 230, 120)]
+            self.sounds.play('pickup')
+            return
+        q.tries += 1
+        self.sounds.play('hit')
+        if q.tries >= QUIZ_TRIES:
+            unit = f" {q.unit}" if q.unit else ""
+            self.quiz_msg = [f"Pravilni odgovor je {fmt(q.answer)}{unit}. Poskusi še to nalogo.", (255, 200, 90)]
+            q.new_question()
+        else:
+            left = QUIZ_TRIES - q.tries
+            self.quiz_msg = [f"Ni pravilno. Poskusi znova! Še {left} poskus{'a' if left == 2 else ''}.", (255, 110, 90)]
 
     def update_lobby(self):
         for pad in self.pads.values():
@@ -2594,6 +2780,54 @@ class Game:
             self.text("PAUSED", self.font_big, (255, 255, 255), (W // 2, cy - 30))
             self.text("START resume   •   BACK / B quit to lobby", self.font_small, (220, 220, 220), (W // 2, cy + 50))
 
+    def wrap(self, s, font, width):
+        lines, cur = [], ""
+        for word in s.split(" "):
+            test = f"{cur} {word}" if cur else word
+            if font.size(test)[0] > width and cur:
+                lines.append(cur)
+                cur = word
+            else:
+                cur = test
+        return lines + [cur]
+
+    def draw_quiz(self):
+        q = self.quiz
+        self.dim(190)
+        panel = pygame.Rect(W // 2 - 500, 110, 1000, 500)
+        pygame.draw.rect(self.screen, (28, 32, 44), panel, border_radius=18)
+        pygame.draw.rect(self.screen, (240, 210, 110), panel, 3, border_radius=18)
+        self.text("MATEMATIČNI ODMOR", self.font_med, (240, 210, 110), (W // 2, 160))
+        lines = self.wrap(q.text, self.font_med, 900)
+        y = 250 - (len(lines) - 1) * 24
+        for line in lines:
+            self.text(line, self.font_med, (255, 255, 255), (W // 2, y))
+            y += 50
+        bw, bh, gap = 64, 84, 12
+        unit_w = self.font_med.size(q.unit)[0] + 20 if q.unit else 0
+        x0 = W // 2 - (QUIZ_DIGITS * bw + (QUIZ_DIGITS - 1) * gap + unit_w) // 2
+        by = 360
+        lead = True   # leading zeros are drawn dimmed, so the entered number reads naturally
+        for i, d in enumerate(q.digits):
+            lead = lead and d == 0 and i < QUIZ_DIGITS - 1
+            rect = pygame.Rect(x0 + i * (bw + gap), by, bw, bh)
+            sel = i == q.cursor and q.solved <= 0
+            pygame.draw.rect(self.screen, (50, 56, 72) if sel else (38, 42, 56), rect, border_radius=10)
+            pygame.draw.rect(self.screen, (255, 230, 120) if sel else (90, 96, 112), rect, 3, border_radius=10)
+            self.text(str(d), self.font_med, (110, 115, 130) if lead else (255, 255, 255), rect.center, shadow=False)
+            if sel and int(self.now * 3) % 2 == 0:
+                for sgn in (-1, 1):   # up / down arrows on the selected digit
+                    ty = rect.centery + sgn * (bh // 2 + 12)
+                    pygame.draw.polygon(self.screen, (255, 230, 120),
+                                        [(rect.centerx - 9, ty - sgn * 5), (rect.centerx + 9, ty - sgn * 5), (rect.centerx, ty + sgn * 5)])
+        if q.unit:
+            self.text(q.unit, self.font_med, (220, 220, 220), (x0 + QUIZ_DIGITS * (bw + gap) + unit_w // 2 - 4, by + bh // 2), shadow=False)
+        if self.quiz_msg:
+            self.text(self.quiz_msg[0], self.font_small, self.quiz_msg[1], (W // 2, 500))
+        self.text("Gor / dol: spremeni števko   •   Levo / desno: izberi mesto   •   A ali START: potrdi",
+                  self.font_hud, (190, 190, 200), (W // 2, 550), shadow=False)
+        self.text("Tipkovnica: številke 0-9, Backspace briše, Enter potrdi", self.font_tiny, (150, 150, 160), (W // 2, 582), shadow=False)
+
     def draw_scores(self, y):
         parts = [(f"{p.cname} {p.score}", p.color) for p in self.players]
         imgs = [self.font_small.render(s, True, c) for s, c in parts]
@@ -2667,6 +2901,8 @@ class Game:
             self.draw_world()
             self.draw_hud()
             self.draw_overlay()
+        if self.quiz:
+            self.draw_quiz()
 
     # ---- main loop
 
@@ -2685,7 +2921,11 @@ class Game:
                 elif e.type == pygame.KEYDOWN:
                     if e.key == pygame.K_F11:
                         pygame.display.toggle_fullscreen()
-                    elif e.key == pygame.K_TAB and self.state == 'lobby':
+                    elif self.quiz and len(e.unicode) == 1 and e.unicode in "0123456789":   # top row and keypad
+                        self.quiz.type_digit(int(e.unicode))
+                    elif self.quiz and e.key == pygame.K_BACKSPACE:
+                        self.quiz.backspace()
+                    elif e.key == pygame.K_TAB and self.state == 'lobby' and not self.quiz:
                         self.toggle_mode()
                     elif e.key == pygame.K_ESCAPE:
                         if self.state == 'lobby':

@@ -23,6 +23,7 @@ if tanks.sdl_ctrl:
 random.seed(1)
 
 g = tanks.Game(False)
+g.quiz_clock = -1e9   # keep the math break out of the gameplay runs; it's tested at the end
 fake = [f"fake{i}" for i in range(tanks.MAX_PLAYERS)]
 for pid in fake:
     g.pads[pid] = tanks.Pad(pid, "kb1")
@@ -200,4 +201,46 @@ assert gh not in g.spectators and not g.bullets
 for _ in range(200):
     g.update_gibs(1 / 60)
 assert not g.gibs, "limbs should land and stay as decals"
+
+# ---- math break: valid questions, appears only at a break, answerable with a pad
+for _ in range(5000):
+    text, ans, unit = tanks.make_question()
+    assert isinstance(ans, int) and 0 <= ans < 10 ** tanks.QUIZ_DIGITS, (text, ans)
+    assert len(g.wrap(text, g.font_med, 900)) <= 3, text
+g.state, g.ending = "play", None
+g.quiz_clock = tanks.QUIZ_INTERVAL + 1
+g.update(1 / 60)
+assert g.quiz is None, "the math break must not interrupt a race in progress"
+g.state = "roundover"
+g.update(1 / 60)
+assert g.quiz is not None
+q = g.quiz
+pad = g.pads[fake[0]]
+
+
+def press(*names):
+    pad.pressed = set(names)
+    g.update(1 / 60)
+    pad.pressed = set()
+
+
+timer = g.timer
+press("a")   # 00000 is never the answer to these questions... unless it is
+if q.answer != 0:
+    assert g.quiz and q.tries == 1 and g.timer == timer, "a wrong answer keeps the game frozen"
+for i, d in enumerate(f"{q.answer:0{tanks.QUIZ_DIGITS}d}"):   # dial the answer in with the stick
+    while q.cursor > i:
+        press("left")
+    while q.cursor < i:
+        press("right")
+    while q.digits[i] != int(d):
+        press("up")
+press("a")
+assert q.solved > 0
+g.draw()
+if shots:
+    pygame.image.save(g.screen, os.path.join(shots, "quiz.png"))
+for _ in range(120):
+    g.update(1 / 60)
+assert g.quiz is None and g.quiz_clock == 0, "solving resets the 5 minute clock"
 print("OK")
