@@ -4,10 +4,12 @@
 
 Left stick: drive   Right stick: aim turret   RT / RB / A: fire
 START: begin match / pause   B: leave lobby   BACK (in pause): quit to lobby
+Y / TAB in the lobby switches between VERSUS and CO-OP (tanks vs waves of undead).
 Keyboard (two players): P1 WASD + Q/E turret + SPACE fire + X leave, P2 arrows + ,/. turret + RCTRL fire + DELETE leave
 ENTER starts / pauses. Up to 6 players in total.
 F11 toggles fullscreen, ESC returns to lobby / quits.
 """
+import heapq
 import math
 import random
 import sys
@@ -49,6 +51,23 @@ CRATE_LIFE = 7.0
 CRATE_RESPAWN = 10.0
 CRATE_R = 15
 DEADZONE = 0.25
+
+# co-op mode
+COOP_TANK_HP = 5
+GHOUL_KINDS = ('mummy', 'zombie', 'vampire', 'ghost')
+GHOUL_HP = 5
+GHOUL_REGEN = 10.0          # seconds per regenerated hit
+GHOUL_SPEED = TANK_SPEED * 0.6
+GHOUL_SLOW = 0.5            # speed factor while slowed
+GHOUL_SLOW_TIME = 3.0
+GHOUL_R = 13
+GHOUL_EMERGE = 0.8
+GHOUL_ATTACK_CD = 1.0
+TANK_HIT_INVULN = 1.0
+WAVE_BREAK = 4.0
+AMMO_DROP_CHANCE = 0.35
+AMMO_DROP = 3
+GHOUL_COLORS = {'mummy': (215, 200, 155), 'zombie': (100, 160, 70), 'vampire': (160, 25, 40), 'ghost': (220, 230, 255)}
 MAX_PLAYERS = 6
 
 PLAYER_COLORS = [
@@ -171,6 +190,13 @@ class Sounds:
         arp = (523, 659, 784, 1047)
         self.snd['pickup'] = self.make(0.3, lambda t: math.sin(tau * arp[min(3, int(t / 0.05))] * t) * e(-t * 5), 0.35)
         self.snd['empty'] = self.make(0.05, lambda t: n2() * e(-t * 90), 0.5)
+        n4, n5 = lp_noise(0.08), lp_noise(0.3)
+        self.snd['groan'] = self.make(0.7, lambda t: (math.sin(tau * (150 - 70 * t + 8 * math.sin(t * 30)) * t) * 0.6
+                                                      + n4() * 2) * min(1, t * 10) * e(-t * 2.5), 0.3)
+        self.snd['splat'] = self.make(0.3, lambda t: n5() * 2 * e(-t * 14) + math.sin(tau * 90 * t) * e(-t * 20), 0.5)
+        self.snd['ghoulhit'] = self.make(0.09, lambda t: n5() * 1.5 * e(-t * 50) + math.sin(tau * 180 * t) * e(-t * 40), 0.4)
+        self.snd['wave'] = self.make(0.8, lambda t: (math.sin(tau * (220 if t < 0.35 else 165) * t)
+                                                     + 0.4 * math.sin(tau * (440 if t < 0.35 else 330) * t)) * e(-t * 2.5), 0.3)
         self.snd['crate'] = self.make(0.6, lambda t: (math.sin(tau * 880 * t) + 0.5 * math.sin(tau * 1320 * t)) * e(-t * 6), 0.2)
 
     def make(self, dur, fn, vol=0.5):
@@ -220,7 +246,7 @@ class Pad:
             if (ax(pygame.CONTROLLER_AXIS_TRIGGERRIGHT) > 0.35 or bt(pygame.CONTROLLER_BUTTON_RIGHTSHOULDER)
                     or bt(pygame.CONTROLLER_BUTTON_A)):
                 held.add('fire')
-            for name, b in (('a', pygame.CONTROLLER_BUTTON_A), ('b', pygame.CONTROLLER_BUTTON_B),
+            for name, b in (('a', pygame.CONTROLLER_BUTTON_A), ('b', pygame.CONTROLLER_BUTTON_B), ('y', pygame.CONTROLLER_BUTTON_Y),
                             ('start', pygame.CONTROLLER_BUTTON_START), ('back', pygame.CONTROLLER_BUTTON_BACK)):
                 if bt(b):
                     held.add(name)
@@ -240,7 +266,7 @@ class Pad:
                 aim = math.atan2(ry, rx)
             if (na > 5 and ax(5) > 0.0) or bt(5) or bt(0):
                 held.add('fire')
-            for name, b in (('a', 0), ('b', 1), ('start', 7), ('back', 6)):
+            for name, b in (('a', 0), ('b', 1), ('y', 3), ('start', 7), ('back', 6)):
                 if bt(b):
                     held.add(name)
         else:
@@ -333,6 +359,88 @@ def make_tank_sprites(color):
         'wreck': tinted(body, (70, 62, 55, 255), pygame.BLEND_RGBA_MULT),
         'wreck_turret': tinted(turret, (70, 62, 55, 255), pygame.BLEND_RGBA_MULT),
     }
+
+
+def make_ghoul_sprites(kind):
+    """Front-facing chibi monsters; returns {(state, facing): surface} for base/white/slow."""
+    S = SS
+    N = 34
+    s = pygame.Surface((N * S, N * S), pygame.SRCALPHA)
+
+    def C(x, y, r, col):
+        pygame.draw.circle(s, col, (x * S, y * S), r * S)
+
+    def E(x, y, w, h, col):
+        pygame.draw.ellipse(s, col, (x * S, y * S, w * S, h * S))
+
+    def Rr(x, y, w, h, col, br=0):
+        pygame.draw.rect(s, col, (x * S, y * S, w * S, h * S), border_radius=br * S)
+
+    def P(pts, col):
+        pygame.draw.polygon(s, col, [(x * S, y * S) for x, y in pts])
+
+    if kind == 'mummy':
+        band, dark = (222, 208, 165), (160, 145, 105)
+        Rr(2, 15, 9, 4, band, 2)
+        Rr(23, 15, 9, 4, band, 2)
+        E(8, 12, 18, 20, band)
+        C(17, 11, 8, band)
+        for y in (5, 9, 15, 20, 25, 29):
+            pygame.draw.line(s, dark, (9 * S, y * S), (25 * S, (y + 2) * S), S)
+        Rr(10, 9, 14, 4, (45, 32, 20), 2)
+        C(14, 11, 1.6, (255, 230, 80))
+        C(20, 11, 1.6, (255, 230, 80))
+    elif kind == 'zombie':
+        skin, shirt, dark = (125, 170, 95), (70, 85, 130), (40, 50, 80)
+        Rr(1, 17, 9, 4, skin, 2)
+        Rr(24, 14, 9, 4, skin, 2)
+        Rr(8, 15, 18, 16, shirt, 5)
+        P([(9, 31), (12, 26), (15, 31)], dark)
+        P([(19, 31), (23, 25), (25, 31)], dark)
+        Rr(15, 17, 2, 9, dark)
+        C(17, 11, 8, skin)
+        C(12, 6, 3, (60, 95, 45))
+        C(21, 5, 2.5, (60, 95, 45))
+        C(14, 10, 2.3, (240, 240, 215))
+        C(20, 11, 1.7, (240, 240, 215))
+        C(14, 10, 1, (20, 0, 0))
+        C(20, 11, 0.8, (20, 0, 0))
+        pygame.draw.line(s, (70, 30, 30), (13 * S, 15 * S), (21 * S, 14 * S), S)
+    elif kind == 'vampire':
+        cape, lining, skin = (30, 20, 40), (150, 20, 35), (225, 220, 235)
+        P([(17, 7), (32, 32), (2, 32)], cape)
+        P([(17, 15), (25, 32), (9, 32)], lining)
+        P([(7, 3), (12, 13), (5, 16)], lining)
+        P([(27, 3), (22, 13), (29, 16)], lining)
+        C(17, 11, 7, skin)
+        P([(10, 10), (11, 4), (17, 2), (23, 4), (24, 10), (17, 7)], (15, 10, 20))
+        C(14, 11, 1.6, (230, 20, 30))
+        C(20, 11, 1.6, (230, 20, 30))
+        P([(15, 15), (16, 15), (15.5, 17)], (255, 255, 255))
+        P([(18, 15), (19, 15), (18.5, 17)], (255, 255, 255))
+    else:
+        body = (235, 240, 255, 205)
+        C(6, 17, 3, body)
+        C(28, 15, 3, body)
+        C(17, 13, 10, body)
+        Rr(7, 13, 20, 13, body)
+        for x in (9, 14, 19, 24):
+            C(x + 0.5, 26, 2.8, body)
+        eye = (20, 20, 45, 235)
+        E(11.5, 9, 4, 6, eye)
+        E(18.5, 9, 4, 6, eye)
+        E(15, 16, 4, 5, eye)
+
+    base = pygame.transform.smoothscale(s, (N, N)).convert_alpha()
+    white = base.copy()
+    white.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGBA_MAX)
+    slow = base.copy()
+    slow.fill((140, 185, 255, 255), special_flags=pygame.BLEND_RGBA_MULT)
+    out = {}
+    for name, img in (('base', base), ('white', white), ('slow', slow)):
+        out[(name, 1)] = img
+        out[(name, -1)] = pygame.transform.flip(img, True, False)
+    return out
 
 
 def make_crate_sprite():
@@ -635,6 +743,8 @@ class Player:
         self.color, self.cname = PLAYER_COLORS[idx]
         self.sprites = make_tank_sprites(self.color)
         self.score = 0
+        self.kills = 0
+        self.spawn = None
         self.tank = None
 
 
@@ -652,6 +762,24 @@ class Tank:
         self.recoil = 0.0
         self.smoke = 0.0
         self.ammo = MAX_AMMO
+        self.max_hp = TANK_HP
+        self.invuln = 0.0
+
+
+class Ghoul:
+    def __init__(self, kind, x, y):
+        self.kind = kind
+        self.x, self.y = x, y
+        self.hp = GHOUL_HP
+        self.regen = 0.0
+        self.slow = 0.0
+        self.flash = 0.0
+        self.attack = 0.0
+        self.claw = 0.0
+        self.emerge = GHOUL_EMERGE
+        self.phase = random.uniform(0, math.tau)
+        self.face = 1
+        self.dead = False
 
 
 class Bullet:
@@ -696,6 +824,27 @@ class Game:
         self.wrecks = []     # [x, y, burn_time] burning hulks emitting smoke
         self.crate = None    # [x, y, life, age]
         self.crate_timer = CRATE_RESPAWN
+        self.mode = 'versus'
+        self.ghouls = []
+        self.pickups = []    # [x, y, life] small ammo drops in co-op
+        self.ghoul_sprites = {k: make_ghoul_sprites(k) for k in GHOUL_KINDS}
+        self.ghoul_shadow = pygame.Surface((26, 10), pygame.SRCALPHA)
+        pygame.draw.ellipse(self.ghoul_shadow, (0, 0, 0, 90), (0, 0, 26, 10))
+        self.splats = {}
+        for kind in ('mummy', 'zombie', 'vampire'):
+            sp = pygame.Surface((40, 40), pygame.SRCALPHA)
+            col = tuple(int(c * 0.6) for c in GHOUL_COLORS[kind]) + (150,)
+            for _ in range(7):
+                pygame.draw.circle(sp, col, (random.randint(10, 30), random.randint(10, 30)), random.randint(3, 8))
+            self.splats[kind] = sp
+        self.flow = None
+        self.flow_timer = 0.0
+        self.wave = 0
+        self.wave_break = 0.0
+        self.wave_to_spawn = 0
+        self.spawn_timer = 0.0
+        self.banner = None   # [text, time_left]
+        self.best_wave = 0
         self.shake = 0.0
         self.now = 0.0
         self.state = 'lobby'
@@ -739,10 +888,13 @@ class Game:
     # ---- flow
 
     def clear_entities(self):
-        for lst in (self.bullets, self.particles, self.rings, self.flashes, self.texts, self.wrecks):
+        for lst in (self.bullets, self.particles, self.rings, self.flashes, self.texts, self.wrecks,
+                    self.ghouls, self.pickups):
             lst.clear()
         self.crate = None
         self.crate_timer = CRATE_RESPAWN
+        self.flow = None
+        self.banner = None
 
     def to_lobby(self):
         self.state = 'lobby'
@@ -755,7 +907,14 @@ class Game:
     def start_match(self):
         for p in self.players:
             p.score = 0
+            p.kills = 0
         self.new_round()
+
+    def make_tank(self, p):
+        t = Tank(p, *p.spawn)
+        if self.mode == 'coop':
+            t.hp = t.max_hp = COOP_TANK_HP
+        return t
 
     def new_round(self):
         self.arena.generate()
@@ -767,7 +926,12 @@ class Game:
         cx, cy = W / 2, HUD + ROWS * T / 2
         for p, (c, r) in zip(self.players, spawns):
             x, y = tile_center(c, r)
-            p.tank = Tank(p, x, y, math.atan2(cy - y, cx - x))
+            p.spawn = (x, y, math.atan2(cy - y, cx - x))
+            p.tank = self.make_tank(p)
+        if self.mode == 'coop':
+            self.wave = 0
+            self.wave_break = 0.5
+            self.wave_to_spawn = 0
         self.state = 'countdown'
         self.timer = 3.0
         self.last_count = 4
@@ -814,7 +978,7 @@ class Game:
                     self.timer = 1.5
                 else:
                     self.new_round()
-        elif self.state == 'matchover':
+        elif self.state in ('matchover', 'coopover'):
             self.timer -= dt
             if self.timer <= 0 and any(('a' in pd.pressed or 'start' in pd.pressed) for pd in self.pads.values()):
                 self.to_lobby()
@@ -824,7 +988,24 @@ class Game:
         self.update_bullets(dt)
         self.update_effects(dt)
 
-        if self.state == 'play':
+        if self.banner:
+            self.banner[1] -= dt
+            if self.banner[1] <= 0:
+                self.banner = None
+        if self.state == 'play' and self.mode == 'coop':
+            self.update_crate(dt)
+            self.update_waves(dt)
+            self.update_ghouls(dt)
+            self.update_pickups(dt)
+            if not any(p.tank and p.tank.alive for p in self.players) and self.ending is None:
+                self.ending = 1.5
+            if self.ending is not None:
+                self.ending -= dt
+                if self.ending <= 0:
+                    self.best_wave = max(self.best_wave, self.wave)
+                    self.state = 'coopover'
+                    self.timer = 1.5
+        elif self.state == 'play':
             self.update_crate(dt)
             alive = [p for p in self.players if p.tank and p.tank.alive]
             limit = 1 if len(self.players) > 1 else 0
@@ -852,9 +1033,15 @@ class Game:
                 pad.rumble(0.3, 0.5, 150)
             elif 'b' in pad.pressed and pl:
                 self.players.remove(pl)
+            if 'y' in pad.pressed:
+                self.toggle_mode()
             if 'start' in pad.pressed and self.players and (pl or pad.kind.startswith('kb')):
                 self.start_match()
                 return
+
+    def toggle_mode(self):
+        self.mode = 'coop' if self.mode == 'versus' else 'versus'
+        self.sounds.play('groan' if self.mode == 'coop' else 'join')
 
     def claim_orphans(self):
         """A reconnected controller (new instance id) takes over a player whose pad vanished."""
@@ -873,6 +1060,7 @@ class Game:
             t.cooldown -= dt
             t.flash -= dt
             t.recoil = max(0.0, t.recoil - 30 * dt)
+            t.invuln -= dt
             if not pad:
                 continue
             mx, my = pad.move
@@ -1033,19 +1221,28 @@ class Game:
                     b.dead = True
                     break
                 b.x, b.y = nx, ny
+                if self.mode == 'coop':
+                    for gh in self.ghouls:
+                        if not gh.dead and gh.emerge <= 0 and (gh.x - b.x) ** 2 + (gh.y - b.y) ** 2 < (GHOUL_R + BULLET_R) ** 2:
+                            self.hit_ghoul(gh, b)
+                            b.dead = True
+                            break
+                    if b.dead:
+                        break
+                    continue
                 for t in tanks:
                     if not t.alive or (t is b.owner and not b.bounced):
                         continue
                     if (t.x - b.x) ** 2 + (t.y - b.y) ** 2 < (TANK_R + BULLET_R) ** 2:
-                        self.hit_tank(t, b)
+                        self.hit_tank(t, b.x, b.y)
                         b.dead = True
                         break
                 if b.dead:
                     break
             if not b.dead:
                 self.particles.append([b.x, b.y, 0, 0, 0.16, 0.16, 'spark', 2.6, b.owner.player.color])
-        # bullets cancel each other out
-        live = [b for b in self.bullets if not b.dead]
+        # bullets cancel each other out (versus only: teammates shouldn't block each other)
+        live = [b for b in self.bullets if not b.dead] if self.mode == 'versus' else []
         for i, a in enumerate(live):
             for b in live[i + 1:]:
                 if not a.dead and not b.dead and (a.x - b.x) ** 2 + (a.y - b.y) ** 2 < (BULLET_R * 2.5) ** 2:
@@ -1054,10 +1251,10 @@ class Game:
                     self.sounds.play('bounce')
         self.bullets = [b for b in self.bullets if not b.dead]
 
-    def hit_tank(self, t, b):
+    def hit_tank(self, t, x, y):
         t.hp -= 1
         t.flash = 0.12
-        self.sparks(b.x, b.y, (255, 230, 150), 12)
+        self.sparks(x, y, (255, 230, 150), 12)
         self.shake = max(self.shake, 0.15)
         if t.hp <= 0:
             self.kill(t)
@@ -1093,6 +1290,234 @@ class Game:
         self.shake = max(self.shake, 0.6)
         self.sounds.play('explode')
         self.rumble(t.player, 1.0, 1.0, 600)
+
+    # ---- co-op
+
+    def update_waves(self, dt):
+        tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        if not tanks:
+            return
+        if self.wave_break > 0:
+            self.wave_break -= dt
+            if self.wave_break <= 0:
+                self.start_wave()
+            return
+        if self.wave_to_spawn > 0:
+            self.spawn_timer -= dt
+            if self.spawn_timer <= 0:
+                self.spawn_ghoul(tanks)
+                self.wave_to_spawn -= 1
+                self.spawn_timer = max(0.5, 1.6 - 0.06 * self.wave)
+        elif not self.ghouls:
+            self.wave_break = WAVE_BREAK
+            self.banner = [f"WAVE {self.wave} CLEARED", 2.5]
+            self.sounds.play('pickup')
+
+    def start_wave(self):
+        self.wave += 1
+        self.wave_to_spawn = self.wave      # wave N brings N ghouls
+        self.spawn_timer = 0.6
+        self.banner = [f"WAVE {self.wave}", 2.0]
+        self.sounds.play('wave')
+        for p in self.players:
+            if not (p.tank and p.tank.alive):
+                p.tank = self.make_tank(p)
+                p.tank.invuln = 2.0
+                self.rings.append([p.tank.x, p.tank.y, 0.0, 0.4])
+            p.tank.ammo = MAX_AMMO
+
+    def spawn_ghoul(self, tanks):
+        if self.flow is None:
+            self.flow = self.compute_flow(tanks)
+        g = self.arena.grid
+        cand = [(c, r) for r in range(1, ROWS - 1) for c in range(1, COLS - 1)
+                if g[r][c] == EMPTY and self.flow[r][c] < math.inf]
+        far = [cr for cr in cand if all(math.hypot(tile_center(*cr)[0] - t.x, tile_center(*cr)[1] - t.y) > 7 * T for t in tanks)]
+        edge = [cr for cr in far if cr[0] in (1, COLS - 2) or cr[1] in (1, ROWS - 2)]
+        pool = edge or far or cand
+        if not pool:
+            return
+        x, y = tile_center(*random.choice(pool))
+        kind = random.choice(GHOUL_KINDS)
+        self.ghouls.append(Ghoul(kind, x, y))
+        if kind != 'ghost':
+            self.arena.scorch_mark(x, y)
+        for _ in range(10):
+            self.particles.append([x + random.uniform(-10, 10), y + random.uniform(-6, 10), random.uniform(-15, 15),
+                                   random.uniform(-40, -10), 1.0, 1.0, 'smoke', random.uniform(4, 8)])
+        self.sounds.play('groan')
+
+    def compute_flow(self, tanks):
+        """Dijkstra distance field from every live tank: walkers step downhill, so each follows its closest tank.
+        Bricks are passable at a high cost (ghouls claw through them), steel and water are not."""
+        g = self.arena.grid
+        dist = [[math.inf] * COLS for _ in range(ROWS)]
+        heap = []
+        for t in tanks:
+            c, r, _ = self.arena.tile(t.x, t.y)
+            if 0 <= c < COLS and 0 <= r < ROWS:
+                dist[r][c] = 0
+                heap.append((0, c, r))
+        heapq.heapify(heap)
+        while heap:
+            d, c, r = heapq.heappop(heap)
+            if d > dist[r][c]:
+                continue
+            for nc, nr in ((c + 1, r), (c - 1, r), (c, r + 1), (c, r - 1)):
+                v = g[nr][nc]
+                if v in (STEEL, WATER):
+                    continue
+                nd = d + (6 if v == BRICK else 1)
+                if nd < dist[nr][nc]:
+                    dist[nr][nc] = nd
+                    heapq.heappush(heap, (nd, nc, nr))
+        return dist
+
+    def ghoul_step_target(self, gh, nearest):
+        """Where a walker heads next: straight at a close tank, else the downhill neighbour tile (maybe a brick)."""
+        if math.hypot(nearest.x - gh.x, nearest.y - gh.y) < 1.5 * T:
+            return nearest.x, nearest.y, None
+        g = self.arena.grid
+        c, r, _ = self.arena.tile(gh.x, gh.y)
+        if not (0 < c < COLS - 1 and 0 < r < ROWS - 1) or self.flow[r][c] == math.inf:
+            return nearest.x, nearest.y, None
+        best, bd = None, self.flow[r][c]
+        open_ = (EMPTY, BUSH)
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            nc, nr = c + dc, r + dr
+            if dc and dr and (g[r][nc] not in open_ or g[nr][c] not in open_):
+                continue   # no corner cutting
+            if self.flow[nr][nc] < bd:
+                best, bd = (nc, nr), self.flow[nr][nc]
+        if best is None:
+            return nearest.x, nearest.y, None
+        x, y = tile_center(*best)
+        return x, y, best if g[best[1]][best[0]] == BRICK else None
+
+    def update_ghouls(self, dt):
+        tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        for gh in self.ghouls:
+            gh.flash -= dt
+            gh.slow -= dt
+            gh.attack -= dt
+            if gh.hp < GHOUL_HP:
+                gh.regen += dt
+                if gh.regen >= GHOUL_REGEN:
+                    gh.regen = 0.0
+                    gh.hp += 1
+                    self.texts.append(["+1", gh.x, gh.y - 22, 0.0, (120, 230, 120)])
+            else:
+                gh.regen = 0.0
+            if gh.emerge > 0:
+                gh.emerge -= dt
+                continue
+        if not tanks:
+            return
+        self.flow_timer -= dt
+        if self.flow is None or self.flow_timer <= 0:
+            self.flow = self.compute_flow(tanks)
+            self.flow_timer = 0.25
+
+        for gh in self.ghouls:
+            if gh.emerge > 0:
+                continue
+            speed = GHOUL_SPEED * (GHOUL_SLOW if gh.slow > 0 else 1.0)
+            gh.phase += dt * 9 * speed / GHOUL_SPEED
+            nearest = min(tanks, key=lambda t: (t.x - gh.x) ** 2 + (t.y - gh.y) ** 2)
+            if gh.kind == 'ghost':
+                tx, ty, brick = nearest.x, nearest.y, None
+            else:
+                tx, ty, brick = self.ghoul_step_target(gh, nearest)
+            dx, dy = tx - gh.x, ty - gh.y
+            d = math.hypot(dx, dy)
+            if d > 1:
+                gh.x += dx / d * speed * dt
+                gh.y += dy / d * speed * dt
+                if abs(dx) > 2:
+                    gh.face = 1 if dx > 0 else -1
+            if gh.kind != 'ghost':
+                gh.x, gh.y = self.arena.collide_circle(gh.x, gh.y, GHOUL_R)
+                if brick and d < T / 2 + GHOUL_R + 4:
+                    gh.claw -= dt
+                    if gh.claw <= 0:
+                        gh.claw = 1.2
+                        self.damage_brick(*brick)
+            for t in tanks:
+                dx, dy = gh.x - t.x, gh.y - t.y
+                d = math.hypot(dx, dy) or 0.01
+                if d < TANK_R + GHOUL_R:
+                    gh.x = t.x + dx / d * (TANK_R + GHOUL_R)
+                    gh.y = t.y + dy / d * (TANK_R + GHOUL_R)
+                    if gh.attack <= 0 and t.invuln <= 0 and t.alive:
+                        gh.attack = GHOUL_ATTACK_CD
+                        t.invuln = TANK_HIT_INVULN
+                        self.hit_tank(t, (t.x + gh.x) / 2, (t.y + gh.y) / 2)
+                        tanks = [tk for tk in tanks if tk.alive]
+                        if not tanks:
+                            return
+        # ghouls shouldn't stack on top of each other
+        for i, a in enumerate(self.ghouls):
+            for b in self.ghouls[i + 1:]:
+                dx, dy = b.x - a.x, b.y - a.y
+                d = math.hypot(dx, dy)
+                if 0 < d < GHOUL_R * 2:
+                    push = (GHOUL_R * 2 - d) / 2
+                    a.x -= dx / d * push
+                    a.y -= dy / d * push
+                    b.x += dx / d * push
+                    b.y += dy / d * push
+        for gh in self.ghouls:
+            if gh.kind != 'ghost':
+                gh.x, gh.y = self.arena.collide_circle(gh.x, gh.y, GHOUL_R)
+
+    def hit_ghoul(self, gh, b):
+        gh.hp -= 1
+        gh.slow = GHOUL_SLOW_TIME
+        gh.flash = 0.1
+        gh.x += b.vx * 0.012   # small knockback
+        gh.y += b.vy * 0.012
+        if gh.kind != 'ghost':
+            gh.x, gh.y = self.arena.collide_circle(gh.x, gh.y, GHOUL_R)
+        self.sparks(b.x, b.y, GHOUL_COLORS[gh.kind], 10)
+        for _ in range(4):
+            self.particles.append([gh.x + random.uniform(-8, 8), gh.y + random.uniform(-8, 8), random.uniform(-20, 20),
+                                   random.uniform(-20, 20), 0.5, 0.5, 'spark', 2.5, (150, 200, 255)])
+        if gh.hp <= 0:
+            self.kill_ghoul(gh, b.owner.player)
+        else:
+            self.sounds.play('ghoulhit')
+
+    def kill_ghoul(self, gh, player):
+        gh.dead = True
+        self.ghouls.remove(gh)
+        player.kills += 1
+        col = GHOUL_COLORS[gh.kind]
+        if gh.kind in self.splats:
+            self.arena.decal(self.splats[gh.kind], gh.x, gh.y)
+        for _ in range(22):
+            a = random.uniform(0, math.tau)
+            sp = random.uniform(40, 200)
+            self.particles.append([gh.x, gh.y, math.cos(a) * sp, math.sin(a) * sp, 0.7, 0.7, 'debris', random.uniform(3, 6), col])
+        for _ in range(8):
+            self.particles.append([gh.x, gh.y, random.uniform(-30, 30), random.uniform(-40, 0), 1.0, 1.0, 'smoke', random.uniform(5, 9)])
+        self.flashes.append([gh.x, gh.y, 0.0, 0.25, 50])
+        self.sounds.play('splat')
+        self.rumble(player, 0.3, 0.4, 120)
+        if random.random() < AMMO_DROP_CHANCE:
+            self.pickups.append([gh.x, gh.y, 8.0])
+
+    def update_pickups(self, dt):
+        tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        for pk in self.pickups:
+            pk[2] -= dt
+            for t in tanks:
+                if math.hypot(t.x - pk[0], t.y - pk[1]) < TANK_R + 10:
+                    t.ammo = min(MAX_AMMO, t.ammo + AMMO_DROP)
+                    pk[2] = 0
+                    self.sounds.play('pickup')
+                    self.texts.append([f"+{AMMO_DROP}", pk[0], pk[1] - 16, 0.0, (255, 220, 100)])
+                    break
+        self.pickups = [pk for pk in self.pickups if pk[2] > 0]
 
     def sparks(self, x, y, color, n):
         for _ in range(n):
@@ -1183,13 +1608,38 @@ class Game:
         frac = life / CRATE_LIFE
         pygame.draw.arc(w, (255, 215, 90), (x - 23, y - 25, 46, 46), math.pi / 2, math.pi / 2 + math.tau * frac, 2)
 
+    def draw_ghoul(self, w, gh):
+        spr = self.ghoul_sprites[gh.kind]
+        state = 'white' if gh.flash > 0 else 'slow' if gh.slow > 0 else 'base'
+        img = spr[(state, gh.face)]
+        ghost = gh.kind == 'ghost'
+        bob = math.sin(self.now * 3 + gh.phase) * 3 if ghost else -abs(math.sin(gh.phase)) * 2
+        ang = 0 if ghost else math.sin(gh.phase) * 8
+        scale = 1.0 - max(0.0, gh.emerge) / GHOUL_EMERGE
+        if scale <= 0.05:
+            return
+        sh = self.ghoul_shadow if not ghost else pygame.transform.rotozoom(self.ghoul_shadow, 0, 0.7)
+        blit_center(w, sh, gh.x, gh.y + (16 if ghost else 13))
+        blit_center(w, pygame.transform.rotozoom(img, ang, scale), gh.x, gh.y - 2 + bob)
+        if gh.hp < GHOUL_HP and gh.emerge <= 0:
+            for i in range(GHOUL_HP):
+                self.world.fill((220, 60, 50) if i < gh.hp else (60, 60, 65), (gh.x - 14 + i * 6, gh.y - 26, 5, 4))
+
     def draw_world(self):
         w = self.world
         self.arena.draw_ground(w, self.now)
         if self.crate:
             self.draw_crate(w)
         tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        for pk in self.pickups:
+            if pk[2] > 2 or int(pk[2] * 8) % 2:
+                blit_center(w, pygame.transform.rotozoom(self.crate_sprite, math.sin(self.now * 3) * 8, 0.6), pk[0], pk[1])
+        for gh in self.ghouls:
+            if gh.kind != 'ghost':
+                self.draw_ghoul(w, gh)
         for t in tanks:
+            if t.invuln > 0 and t.flash <= 0 and int(self.now * 12) % 2:
+                continue
             self.draw_tank(w, t)
         for b in self.bullets:
             col = b.owner.player.color
@@ -1208,6 +1658,9 @@ class Game:
             elif t.ammo <= 3:
                 self.text(str(t.ammo), self.font_tiny, (255, 215, 90), (t.x, t.y - 27), w, shadow=True)
         self.arena.draw_bushes(w, self.now)
+        for gh in self.ghouls:   # ghosts float above walls and bushes
+            if gh.kind == 'ghost':
+                self.draw_ghoul(w, gh)
         for x, y, t, mt in self.rings:
             k = t / mt
             pygame.draw.circle(w, lerp_color((255, 220, 150), (255, 90, 30), k), (x, y), 10 + 90 * k, max(1, int(7 * (1 - k))))
@@ -1237,14 +1690,16 @@ class Game:
             t = p.tank
             hp = t.hp if t and t.alive else 0
             ammo = t.ammo if t and t.alive else 0
-            for i in range(TANK_HP):
+            for i in range(t.max_hp if t else TANK_HP):
                 col = (230, 70, 60) if i < hp else (70, 70, 75)
                 self.screen.fill(col, (x0 + 62 + i * 14, 6, 11, 10))
             empty_flash = t and t.alive and ammo == 0 and int(self.now * 4) % 2
             for i in range(MAX_AMMO):
                 col = (230, 185, 70) if i < ammo else ((150, 50, 45) if empty_flash else (60, 60, 65))
                 self.screen.fill(col, (x0 + 62 + i * 6, 21, 4, 12))
-            for i in range(WIN_SCORE):
+            if self.mode == 'coop':
+                self.screen.blit(self.font_hud.render(f"x{p.kills}", True, (230, 230, 230)), (x0 + 140, 11))
+            for i in range(WIN_SCORE if self.mode == 'versus' else 0):
                 cx = x0 + 134 + i * 14
                 if i < p.score:
                     pygame.draw.circle(self.screen, p.color, (cx, HUD // 2), 5)
@@ -1257,6 +1712,27 @@ class Game:
 
     def draw_overlay(self):
         cy = HUD + ROWS * T // 2
+        if self.mode == 'coop' and self.state in ('countdown', 'play'):
+            left = len(self.ghouls) + self.wave_to_spawn
+            if self.wave:
+                self.text(f"WAVE {self.wave}   •   {left} LEFT", self.font_hud, (230, 220, 200), (W // 2, HUD + 18))
+            if self.banner and self.state == 'play':
+                self.text(self.banner[0], self.font_big, (200, 255, 170) if "CLEARED" in self.banner[0] else (255, 120, 90), (W // 2, cy))
+        if self.state == 'coopover':
+            self.dim(170)
+            self.text("THE TANKS HAVE FALLEN", self.font_med, (255, 110, 90), (W // 2, cy - 80))
+            total = sum(p.kills for p in self.players)
+            self.text(f"Reached wave {self.wave}   •   {total} ghoul{'s' if total != 1 else ''} destroyed",
+                      self.font_small, (230, 230, 230), (W // 2, cy - 20))
+            parts = [(f"{p.cname} {p.kills}", p.color) for p in self.players]
+            imgs = [self.font_small.render(t, True, c) for t, c in parts]
+            x = W // 2 - (sum(i.get_width() for i in imgs) + 40 * (len(imgs) - 1)) // 2
+            for img in imgs:
+                self.screen.blit(img, (x, cy + 25))
+                x += img.get_width() + 40
+            if self.timer <= 0:
+                self.text("Press A to continue", self.font_small, (220, 220, 220), (W // 2, cy + 90))
+            return
         if self.state == 'countdown':
             n = max(1, math.ceil(self.timer))
             self.text(str(n), self.font_big, (255, 255, 255), (W // 2, cy))
@@ -1326,14 +1802,21 @@ class Game:
                 if int(self.now * 2) % 2:
                     self.text("Press A to join", self.font_hud, (170, 170, 175), (rect.centerx, by + 120), shadow=False)
 
+        if self.mode == 'versus':
+            self.text("MODE:  VERSUS  -  last tank standing", self.font_small, (240, 220, 120), (W // 2, 522))
+        else:
+            self.text("MODE:  CO-OP  -  survive the undead together", self.font_small, (255, 120, 90), (W // 2, 522))
+        self.text("Y / TAB to switch mode", self.font_tiny, (170, 170, 175), (W // 2, 548), shadow=False)
         n_pads = sum(1 for p in self.pads.values() if p.kind in ('ctrl', 'joy'))
-        self.text(f"{n_pads} controller{'s' if n_pads != 1 else ''} connected", self.font_hud, (150, 150, 155), (W // 2, 540), shadow=False)
+        self.text(f"{n_pads} controller{'s' if n_pads != 1 else ''} connected", self.font_tiny, (150, 150, 155), (W // 2, 568), shadow=False)
         if self.players:
-            msg = "Press START to begin" if len(self.players) > 1 else "Press START for solo practice (2+ players for a match)"
+            msg = ("Press START to begin" if len(self.players) > 1 or self.mode == 'coop'
+                   else "Press START for solo practice (2+ players for a match)")
             self.text(msg, self.font_small, (255, 255, 255), (W // 2, 590))
         self.text("Keyboard P1: WASD drive, Q/E aim, SPACE join+fire, X leave   •   P2: arrows drive, , . aim, R-CTRL join+fire, DEL leave   •   ENTER start",
                   self.font_tiny, (150, 150, 155), (W // 2, 630), shadow=False)
-        self.text(f"First to {WIN_SCORE} round wins   •   B leave   •   F11 fullscreen   •   ESC quit",
+        goal = f"First to {WIN_SCORE} round wins" if self.mode == 'versus' else "Wave N brings N ghouls"
+        self.text(f"{goal}   •   B leave   •   F11 fullscreen   •   ESC quit",
                   self.font_hud, (150, 150, 155), (W // 2, 660), shadow=False)
 
     def draw(self):
@@ -1361,6 +1844,8 @@ class Game:
                 elif e.type == pygame.KEYDOWN:
                     if e.key == pygame.K_F11:
                         pygame.display.toggle_fullscreen()
+                    elif e.key == pygame.K_TAB and self.state == 'lobby':
+                        self.toggle_mode()
                     elif e.key == pygame.K_ESCAPE:
                         if self.state == 'lobby':
                             return

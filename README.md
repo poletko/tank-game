@@ -33,5 +33,14 @@ F11 toggles fullscreen. ESC returns to the lobby, or quits from the lobby.
 - Each round gets a new random map with 4-way symmetry.
 - Controllers can be plugged in at any time. If one disconnects mid-match, press A on any free pad to take over that player.
 
+## Co-op mode
+Press **Y** (controller) or **Tab** (keyboard) in the lobby to switch from VERSUS to CO-OP. All the tanks team up against waves of mummies, zombies, vampires and ghosts.
+- Wave 1 has one ghoul, and each cleared wave adds one more (wave N brings N ghouls).
+- A ghoul takes 5 hits to kill and regenerates 1 hit every 10 s. Each hit slows it to half speed for 3 s.
+- Ghouls move at 60% of tank speed and chase the closest tank. Walkers go around walls and claw through bricks if they have to. Ghosts float straight through walls.
+- A ghoul's touch costs a tank 1 HP. Tanks have 5 HP in co-op, and there's no friendly fire.
+- Ammo refills at the start of each wave, crates still appear, and killed ghouls sometimes drop a +3 ammo box.
+- Fallen tanks come back at the next wave. When every tank is down the game ends and shows the wave you reached and each player's kills.
+
 ## License
 Public domain ([The Unlicense](LICENSE)). Anyone can do whatever they want with this game: copy it, change it, share it or sell it, with no conditions and no credit needed.

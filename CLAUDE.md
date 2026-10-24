@@ -47,6 +47,13 @@ Always run the smoke test after changes. For visual changes, also look at the sc
    - **Controller hot-plug:** handled in `run()` via `scan_pads()` and `remove_pad()`. In a match, a new
      pad pressing A takes over a player whose pad disconnected (`claim_orphans`).
 
+## Co-op mode
+- `Game.mode` is `'versus'` or `'coop'`. It's toggled in the lobby by the Y button (the `'y'` pad button) or Tab (handled as a KEYDOWN event, because both keyboard pads would otherwise toggle it twice).
+- Tuning lives in the `COOP_*`, `GHOUL_*`, `WAVE_BREAK` and `AMMO_DROP*` constants. The user specified these rules, so keep them unless asked: wave N spawns N ghouls; ghouls take 5 hits, regenerate 1 hit per 10 s, slow to 50% for 3 s per hit, move at 60% of tank speed and chase the closest tank.
+- `Ghoul` is the entity. The logic is in `update_waves` → `start_wave` / `spawn_ghoul`, then `update_ghouls`, `hit_ghoul`, `kill_ghoul` and `update_pickups`.
+- Pathing: `compute_flow` is a Dijkstra distance field from all live tanks (bricks cost 6, steel and water are blocked), recomputed every 0.25 s. Walkers step to the downhill neighbour tile (`ghoul_step_target`) and claw bricks in the way. Ghosts ignore walls and are drawn above bushes.
+- In co-op, bullets skip tanks entirely (no friendly fire) and don't cancel each other. The `coopover` state shows the results.
+
 ## Conventions
 - Keep it a single file with no dependencies beyond pygame and no external assets.
 - Match the existing style: plain classes, short comments only where something is non-obvious.
