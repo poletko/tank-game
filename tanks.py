@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Public domain (The Unlicense, see LICENSE): do whatever you want with this.
 """Tank Arena - local multiplayer top-down tank shooter (Linux, Xbox controllers).
 
 Left stick: drive   Right stick: aim turret   RT / RB / A: fire

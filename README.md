@@ -32,3 +32,6 @@ F11 toggles fullscreen. ESC returns to the lobby, or quits from the lobby.
 - Each tank carries 10 shells. An ammo crate appears at a random spot for 7 s (it blinks near the end, and a ring shows the time left). Driving over it refills you to 10. Once it's picked up or gone, the next one appears 10 s later.
 - Each round gets a new random map with 4-way symmetry.
 - Controllers can be plugged in at any time. If one disconnects mid-match, press A on any free pad to take over that player.
+
+## License
+Public domain ([The Unlicense](LICENSE)). Anyone can do whatever they want with this game: copy it, change it, share it or sell it, with no conditions and no credit needed.
