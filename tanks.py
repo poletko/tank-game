@@ -388,6 +388,15 @@ class Sounds:
 
 # ---------------------------------------------------------------- input
 
+# raw joystick layouts for pads without an SDL mapping: axis and button numbers
+XPAD_LAYOUT = {'rx': 3, 'ry': 4, 'lt': 2, 'rt': 5, 'lt_b': None, 'rt_b': None, 'dpad': None,
+               'a': 0, 'b': 1, 'x': 2, 'y': 3, 'lb': 4, 'rb': 5, 'back': 6, 'start': 7}
+# browsers present pads in the W3C "standard gamepad" layout: triggers are buttons, the D-pad is buttons 12-15
+WEB_LAYOUT = {'rx': 2, 'ry': 3, 'lt': None, 'rt': None, 'lt_b': 6, 'rt_b': 7, 'dpad': (12, 13, 14, 15),
+              'a': 0, 'b': 1, 'x': 2, 'y': 3, 'lb': 4, 'rb': 5, 'back': 8, 'start': 9}
+JOY_LAYOUT = WEB_LAYOUT if WEB else XPAD_LAYOUT
+
+
 class Pad:
     """One input device: SDL game controller, raw joystick, or a keyboard half."""
 
@@ -428,25 +437,29 @@ class Pad:
                 if bt(b):
                     held.add(name)
         elif self.kind == 'joy':
-            # Fallback for pads SDL has no mapping for; assumes the Linux xpad layout.
-            j = self.dev
+            # Fallback for pads SDL has no mapping for: the Linux xpad layout, or in a browser the W3C standard one
+            j, lay = self.dev, JOY_LAYOUT
             na, nb = j.get_numaxes(), j.get_numbuttons()
-            ax = lambda i: j.get_axis(i) if i < na else 0.0
-            bt = lambda i: j.get_button(i) if i < nb else 0
+            ax = lambda i: j.get_axis(i) if i is not None and i < na else 0.0
+            bt = lambda i: j.get_button(i) if i is not None and i < nb else 0
             mx, my = ax(0), ax(1)
-            rx, ry = ax(3), ax(4)
-            if j.get_numhats():
-                hx, hy = j.get_hat(0)
-                if hx or hy:
-                    mx, my = hx, -hy
+            rx, ry = ax(lay['rx']), ax(lay['ry'])
+            if lay['dpad']:
+                u, d, l, r = lay['dpad']
+                hx, hy = bt(r) - bt(l), bt(u) - bt(d)
+            else:
+                hx, hy = j.get_hat(0) if j.get_numhats() else (0, 0)
+            if hx or hy:
+                mx, my = hx, -hy
             if math.hypot(rx, ry) > 0.5:
                 aim = math.atan2(ry, rx)
-            if (na > 5 and ax(5) > 0.0) or bt(5) or bt(0):
+            # trigger axes rest at -1
+            if (lay['rt'] is not None and na > lay['rt'] and ax(lay['rt']) > 0.0) or bt(lay['rt_b']) or bt(lay['rb']) or bt(lay['a']):
                 held.add('fire')
-            if (na > 2 and ax(2) > 0.0) or bt(4) or bt(2):
+            if (lay['lt'] is not None and na > lay['lt'] and ax(lay['lt']) > 0.0) or bt(lay['lt_b']) or bt(lay['lb']) or bt(lay['x']):
                 held.add('fire2')
-            for name, b in (('a', 0), ('b', 1), ('y', 3), ('start', 7), ('back', 6)):
-                if bt(b):
+            for name in ('a', 'b', 'y', 'start', 'back'):
+                if bt(lay[name]):
                     held.add(name)
         else:
             k = KB_MAPS[self.kind]
@@ -1467,7 +1480,7 @@ class Game:
                 pid = f"pad{j.get_instance_id()}"
                 if pid in self.pads:
                     continue
-                if sdl_ctrl and sdl_ctrl.is_controller(i):
+                if sdl_ctrl and not WEB and sdl_ctrl.is_controller(i):   # browsers already remap pads to WEB_LAYOUT
                     self.pads[pid] = Pad(pid, 'ctrl', sdl_ctrl.Controller(i))
                 else:
                     j.init()

@@ -379,4 +379,51 @@ assert max(abs(a - b) for a, b in zip(hidden[:3], bare[:3])) < 24, "a tank or de
 g.arena.sway = True
 g.arena.ground = None
 print("browser drawing path ok")
+
+
+# ---- raw joystick layouts: Linux xpad and the browser's standard gamepad
+class FakeJoy:
+    def __init__(self, axes, buttons, hats=0):
+        self.axes, self.buttons, self.hats = axes, buttons, hats
+
+    def get_numaxes(self):
+        return len(self.axes)
+
+    def get_numbuttons(self):
+        return len(self.buttons)
+
+    def get_numhats(self):
+        return self.hats
+
+    def get_hat(self, i):
+        return (0, 0)
+
+    def get_axis(self, i):
+        return self.axes[i]
+
+    def get_button(self, i):
+        return self.buttons[i]
+
+
+saved = tanks.JOY_LAYOUT
+tanks.JOY_LAYOUT = tanks.WEB_LAYOUT
+web = FakeJoy([0.0, 0.0, 0.0, -1.0], [0] * 17)   # right stick pushed up
+pad = tanks.Pad("web", "joy", web)
+pad.poll(None)
+assert pad.aim is not None and abs(pad.aim + math.pi / 2) < 0.01, "browser right stick must aim the turret"
+assert not pad.held, "a resting browser pad presses nothing"
+web.buttons[6] = 1   # LT
+web.buttons[13] = 1  # D-pad down
+pad.poll(None)
+assert "fire2" in pad.held and pad.move[1] > 0.9, "browser LT is the special, D-pad drives"
+tanks.JOY_LAYOUT = tanks.XPAD_LAYOUT
+xpad = FakeJoy([0.0, 0.0, -1.0, 1.0, 0.0, -1.0], [0] * 11, hats=1)   # right stick pushed right, triggers at rest
+pad = tanks.Pad("xpad", "joy", xpad)
+pad.poll(None)
+assert pad.aim is not None and abs(pad.aim) < 0.01 and not pad.held
+xpad.axes[2] = 1.0   # LT
+pad.poll(None)
+assert "fire2" in pad.held
+tanks.JOY_LAYOUT = saved
+print("joystick layouts ok")
 print("OK")

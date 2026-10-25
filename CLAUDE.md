@@ -30,7 +30,7 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 3. **`Sounds`:** procedural sound bank (`self.snd[name] = self.make(duration, fn(t), vol)`); play with `self.sounds.play(name)`.
 4. **`Pad`:** one input device, read every frame by `poll()` into `move`, `aim`, `turret_rot`, `held`
    and `pressed` (edge-triggered). Kinds are `ctrl` (SDL GameController, the normal path for Xbox pads),
-   `joy` (raw fallback assuming the xpad layout), and `kb1`/`kb2`. Button names used by game logic:
+   `joy` (raw fallback using `JOY_LAYOUT`: `XPAD_LAYOUT` on desktop, `WEB_LAYOUT` in a browser, where pads always use the W3C standard layout and never go through `ctrl`), and `kb1`/`kb2`. Button names used by game logic:
    `fire`, `a`, `b`, `start`, `back`.
 5. **Sprite builders:** drawn at 3x (`SS`) and smooth-scaled down for antialiasing. Always call
    `.convert()` or `.convert_alpha()` on finished surfaces, because unconverted surfaces made the game
