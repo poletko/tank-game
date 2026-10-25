@@ -249,6 +249,160 @@ for _ in range(tanks.GHOUL_HP):
     g.hit_ghoul(gh, tanks.Bullet(t, gh.x, gh.y, 0))
 assert gh.dead and not g.ghouls
 
+
+# ---- bosses: every third wave, in order, ranged attacks only along rows and columns
+g.to_lobby()
+g.mode = "coop"
+g.players = g.players[:2]
+g.start_match()
+g.state = "play"
+for wave, kind in ((3, "knight"), (6, "spider"), (9, "snake"), (12, "witch"), (15, "knight")):
+    g.wave = wave - 1
+    g.bosses, g.ghouls = [], []
+    g.start_wave()
+    assert g.boss_pending and g.boss_pending[0] == kind and g.wave_to_spawn == wave, (wave, g.boss_pending)
+assert g.boss_pending[1] == tanks.BOSS_HP + tanks.BOSS_HP_GROWTH, "the second knight is tougher"
+g.wave, g.boss_pending = 1, None
+g.start_wave()
+assert g.boss_pending is None, "no boss on wave 2"
+
+
+def open_field():
+    """An empty arena with the two tanks parked out of the way, for testing one boss at a time."""
+    g.arena.grid = [[tanks.STEEL if r in (0, tanks.ROWS - 1) or c in (0, tanks.COLS - 1) else tanks.EMPTY
+                     for c in range(tanks.COLS)] for r in range(tanks.ROWS)]
+    g.arena.brick_hp = {}
+    g.arena.ground = None
+    g.flow = None
+    g.ghouls, g.bosses, g.boss_shots, g.pickups = [], [], [], []
+    g.webs.clear()
+    g.boss_pending, g.wave_to_spawn, g.wave_break = None, 0, 0
+    for p in g.players:
+        p.tank = g.make_tank(p)
+        p.tank.invuln = 0
+    a, b = g.players[0].tank, g.players[1].tank
+    b.alive = False
+    return a
+
+
+def make_boss(kind, x, y):
+    bs = tanks.Boss(kind, x, y, tanks.BOSS_HP)
+    bs.emerge = 0
+    g.bosses.append(bs)
+    return bs
+
+
+a = open_field()
+a.x, a.y = tanks.tile_center(8, 8)
+bs = make_boss("knight", *tanks.tile_center(20, 4))
+assert g.boss_aim(bs, [a]) is None, "never thrown diagonally"
+bs.x, bs.y = tanks.tile_center(20, 8)
+aim = g.boss_aim(bs, [a])
+assert aim and aim[0] == -1 and aim[1] == 0, aim
+
+# each boss throws along its row: the shot stays on that row and hurts the tank
+for kind in tanks.BOSS_KINDS:
+    a = open_field()
+    a.x, a.y = tanks.tile_center(6, 8)
+    a.hp = a.max_hp = tanks.COOP_TANK_HP
+    bs = make_boss(kind, *tanks.tile_center(16, 8))
+    bs.cool = 0
+    ys, hit_at = set(), None
+    for i in range(400):
+        a.x, a.y = tanks.tile_center(6, 8)   # parked
+        a.invuln = min(a.invuln, 0.5)
+        bs.x, bs.y = tanks.tile_center(16, 8)
+        g.update_bosses(1 / 60)
+        g.update_boss_shots(1 / 60)
+        for sh in g.boss_shots:
+            if sh.kind != "cat":
+                ys.add(round(sh.y))
+        if a.hp < a.max_hp and hit_at is None:
+            hit_at = i
+        g.draw()
+    assert hit_at is not None, f"the {kind}'s ranged attack never hit"
+    assert len(ys) <= 1, f"the {kind}'s shot left its row: {ys}"
+    if kind == "knight":
+        assert bs.armed or any(sh.kind == "sword" for sh in g.boss_shots), "the sword must come back"
+    if kind == "spider":
+        assert g.webs, "web balls leave webs"
+
+# the knight gets his sword back after it returns
+a = open_field()
+a.x, a.y = tanks.tile_center(6, 8)
+bs = make_boss("knight", *tanks.tile_center(16, 8))
+bs.aim = (-1, 0, 400)
+g.boss_throw(bs)
+assert not bs.armed
+for _ in range(400):
+    g.update_boss_shots(1 / 60)
+assert bs.armed and not g.boss_shots
+
+# the spider leaves webs behind, and webs slow tanks
+a = open_field()
+a.x, a.y = tanks.tile_center(4, 4)
+bs = make_boss("spider", *tanks.tile_center(25, 12))
+for _ in range(240):
+    a.x, a.y = tanks.tile_center(4, 4)
+    g.update_bosses(1 / 60)
+assert len(g.webs) >= 4, "the spider should web the tiles she walks over"
+web = next(iter(g.webs))
+g.state = "play"
+pad = g.pads[a.player.pad_id]
+
+
+def drive(x, y):
+    a.x, a.y, a.angle = x, y, 0.0
+    pad.move, pad.aim, pad.held, pad.pressed = (1.0, 0.0), None, set(), set()
+    g.update_tanks(0.1)
+    return a.x - x
+
+
+free = drive(*tanks.tile_center(4, 4))
+on_web = drive(*tanks.tile_center(*web))
+assert on_web < free * 0.6, (on_web, free)
+pad.move = (0, 0)
+
+# the snake is long, and shooting its body hurts it
+a = open_field()
+a.x, a.y = tanks.tile_center(3, 3)
+bs = make_boss("snake", *tanks.tile_center(28, 13))
+for _ in range(300):
+    a.x, a.y = tanks.tile_center(3, 3)
+    g.update_bosses(1 / 60)
+assert len(bs.segs) == tanks.SNAKE_SEGMENTS
+assert math.dist(bs.segs[0], bs.segs[-1]) > 100, "the snake should stretch out behind its head"
+tail = bs.segs[-2]
+hp = bs.hp
+g.bullets = [tanks.Bullet(a, tail[0] - 12, tail[1], 0)]
+g.update_bullets(1 / 60)
+assert bs.hp == hp - 1, "a shot to the body should hurt the snake"
+
+# the witch's cats fly over walls and blow up next to the tank
+a = open_field()
+for c in range(8, 14):
+    g.arena.grid[8][c] = tanks.STEEL
+a.x, a.y = tanks.tile_center(5, 8)
+bs = make_boss("witch", *tanks.tile_center(16, 8))
+bs.aim = g.boss_aim(bs, [a])
+assert bs.aim, "the witch throws over walls"
+g.boss_throw(bs)
+hp = a.hp
+for _ in range(240):
+    g.update_boss_shots(1 / 60)
+assert a.hp == hp - 1 and not g.boss_shots
+
+# killing the boss clears the wave, and a cleared wave repairs the tanks
+a = open_field()
+a.hp = 1
+bs = make_boss("knight", *tanks.tile_center(20, 8))
+for _ in range(bs.max_hp):
+    g.hit_boss(bs, a.player, bs.x, bs.y)
+assert bs.dead and not g.bosses and len(g.pickups) == 3
+g.update_waves(1 / 60)
+assert a.hp == a.max_hp, "every cleared wave repairs the tanks"
+print("bosses ok")
+
 # ---- race: 6 bots follow the centerline and shoot whoever is close
 g.to_lobby()
 g.mode = "race"
@@ -316,6 +470,30 @@ assert gh not in g.spectators and not g.bullets
 for _ in range(200):
     g.update_gibs(1 / 60)
 assert not g.gibs, "limbs should land and stay as decals"
+
+
+# the Ghost Rider lashes whoever tails him, dies to one shell and rides again 3 s later
+g.new_round()
+g.state = "play"
+r = g.rider
+g.update_rider(1 / 60)
+a = g.players[0].tank
+a.x, a.y = r.x - math.cos(r.ang) * 60, r.y - math.sin(r.ang) * 60
+a.vx, a.vy, a.invuln, a.z = math.cos(r.ang) * 300, math.sin(r.ang) * 300, 0, 0.0
+r.cool = 0
+g.update_rider(1 / 60)
+assert r.whip and math.hypot(a.vx, a.vy) < 120, "tailing the rider should get you lashed"
+g.bullets = [tanks.Bullet(a, r.x - 15 * math.cos(r.ang), r.y - 15 * math.sin(r.ang), r.ang)]
+g.update_race_bullets(1 / 60)
+assert r.dead > 0 and not g.bullets
+for _ in range(int(tanks.RIDER_RESPAWN * 60) + 2):
+    g.update_rider(1 / 60)
+assert r.dead <= 0, "the rider comes back"
+ammo = a.ammo
+a.cooldown = 0
+g.fire(a)
+assert a.ammo == ammo, "race shells are unlimited"
+print("ghost rider ok")
 
 # ---- math break: valid questions, appears only at a break, answerable with a pad
 for _ in range(5000):

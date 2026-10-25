@@ -75,6 +75,31 @@ AMMO_DROP_CHANCE = 0.35
 AMMO_DROP = 3
 GHOUL_COLORS = {'mummy': (215, 200, 155), 'zombie': (100, 160, 70), 'vampire': (160, 25, 40), 'ghost': (220, 230, 255)}
 
+# co-op bosses: one comes with every BOSS_EVERY-th wave, in BOSS_KINDS order, tougher each time round
+BOSS_EVERY = 3
+BOSS_KINDS = ('knight', 'spider', 'snake', 'witch')
+BOSS_NAMES = {'knight': "THE CURSED KNIGHT", 'spider': "THE SPIDER QUEEN", 'snake': "THE GREAT SNAKE", 'witch': "THE WITCH"}
+BOSS_COLORS = {'knight': (160, 120, 230), 'spider': (150, 50, 170), 'snake': (110, 190, 70), 'witch': (150, 230, 100)}
+BOSS_HP = 25
+BOSS_HP_GROWTH = 15         # extra hit points each time the bosses come round again
+BOSS_R = 19
+BOSS_SPEED = TANK_SPEED * 0.72
+BOSS_ATTACK_CD = 2.6        # seconds between ranged attacks
+BOSS_WINDUP = 0.5           # the boss glows and a line shows where it will throw, so players can dodge
+BOSS_RANGE = 14 * T
+BOSS_ALIGN = 22             # ranged attacks fly only along a row or column: a tank must be this close to one
+SWORD_SPEED = 430
+SPIT_SPEED = 380            # spider web balls and snake venom
+WEB_LIFE = 15.0
+WEB_SLOW = 0.45             # tank speed factor on a web
+WEB_MAX = 24
+WEB_STUCK = 1.0             # a web ball pins the tank it hits for this long
+SNAKE_SEGMENTS = 12
+SNAKE_TRAIL_STEP = 3        # px between remembered head positions; segments sit every 5th one
+CAT_SPEED = 320
+CAT_FUSE = 0.5              # a landed cat hisses this long, then explodes
+CAT_RADIUS = 58
+
 # special weapons: lone co-op survivors find one-shot packets, the last-placed versus player gets a rechargeable one
 SPECIALS = ('rocket', 'mortar', 'tesla')
 SPECIAL_NAMES = {'rocket': "ROCKET", 'mortar': "MORTAR", 'tesla': "TESLA"}
@@ -113,6 +138,11 @@ RAMP_LEN = 40
 RAMP_H = 12
 RAMP_KICK = 0.55            # take-off vertical speed per unit of forward speed
 GRAVITY = 900
+RIDER_SPEED = 285           # the Ghost Rider: a bit slower than a tank at full speed
+RIDER_REACH = 150           # how far behind him he can lash
+RIDER_LASH_CD = 1.0
+RIDER_RESPAWN = 3.0
+RIDER_R = 11
 SPECTATORS = 50
 TREES = 14
 GRASS = (62, 110, 52)
@@ -372,6 +402,12 @@ class Sounds:
         self.snd['zap'] = self.make(0.4, lambda t: ((1 if math.sin(tau * 95 * t) > 0 else -1) * 0.4 + n5() * 1.2)
                                      * (0.6 + 0.4 * math.sin(t * 160)) * e(-t * 6), 0.35)
         self.snd['crate'] = self.make(0.6, lambda t: (math.sin(tau * 880 * t) + 0.5 * math.sin(tau * 1320 * t)) * e(-t * 6), 0.2)
+        self.snd['throw'] = self.make(0.3, lambda t: n7() * 2 * math.sin(math.pi * t / 0.3) * (0.6 + 0.4 * math.sin(t * 90)), 0.35)
+        self.snd['meow'] = self.make(0.45, lambda t: math.sin(tau * (700 + 500 * math.sin(math.pi * t / 0.45)) * t)
+                                     * math.sin(math.pi * t / 0.45) * 0.6, 0.3)
+        self.snd['boss'] = self.make(1.3, lambda t: (math.sin(tau * (70 + 10 * math.sin(t * 9)) * t) + n4() * 2)
+                                     * min(1, t * 4) * e(-t * 1.8), 0.55)
+        self.snd['lash'] = self.make(0.35, lambda t: n1() * 2 * e(-t * 12) + math.sin(tau * (900 - 1800 * t) * t) * e(-t * 9), 0.4)
 
     def make(self, dur, fn, vol=0.5):
         buf = array('h')
@@ -645,6 +681,158 @@ def make_ghoul_sprites(kind):
     return out
 
 
+def make_boss_sprites(kind):
+    """Bosses, drawn like the ghouls but bigger: {(state, facing): surface}, plus extra parts per kind."""
+    S = SS
+    N = 58 if kind == 'witch' else 52
+    s = pygame.Surface((N * S, N * S), pygame.SRCALPHA)
+
+    def C(x, y, r, col):
+        pygame.draw.circle(s, col, (x * S, y * S), r * S)
+
+    def E(x, y, w, h, col):
+        pygame.draw.ellipse(s, col, (x * S, y * S, w * S, h * S))
+
+    def Rr(x, y, w, h, col, br=0):
+        pygame.draw.rect(s, col, (x * S, y * S, w * S, h * S), border_radius=br * S)
+
+    def P(pts, col):
+        pygame.draw.polygon(s, col, [(x * S, y * S) for x, y in pts])
+
+    def L(pts, col, w):
+        pygame.draw.lines(s, col, False, [(x * S, y * S) for x, y in pts], int(w * S))
+
+    extra = {}
+    if kind == 'knight':
+        steel, dark, light = (120, 118, 140), (70, 68, 88), (175, 175, 195)
+        P([(14, 19), (38, 19), (43, 49), (9, 49)], (95, 20, 45))          # cape
+        Rr(17, 37, 7, 12, dark, 2)
+        Rr(28, 37, 7, 12, dark, 2)
+        Rr(13, 21, 26, 20, steel, 6)
+        Rr(15, 23, 22, 4, light, 2)
+        pygame.draw.line(s, (170, 110, 240), (26 * S, 28 * S), (26 * S, 38 * S), S)   # cursed rune
+        pygame.draw.line(s, (170, 110, 240), (22 * S, 32 * S), (30 * S, 32 * S), S)
+        Rr(7, 23, 7, 14, dark, 3)
+        Rr(38, 23, 7, 14, dark, 3)
+        P([(17, 9), (9, 0), (20, 6)], (225, 215, 190))                   # horns
+        P([(35, 9), (43, 0), (32, 6)], (225, 215, 190))
+        C(26, 14, 10.5, steel)
+        C(23, 10, 4, light)
+        Rr(17, 12, 18, 4, (15, 12, 20), 1)                               # visor slit
+        C(22, 14, 1.6, (255, 70, 60))
+        C(30, 14, 1.6, (255, 70, 60))
+        sw = pygame.Surface((36 * S, 36 * S), pygame.SRCALPHA)
+        pygame.draw.polygon(sw, (205, 210, 228), [(16 * S, 5 * S), (18 * S, 0), (20 * S, 5 * S), (20 * S, 25 * S), (16 * S, 25 * S)])
+        pygame.draw.line(sw, (160, 100, 235), (18 * S, 6 * S), (18 * S, 23 * S), S)
+        pygame.draw.rect(sw, (205, 165, 60), (10 * S, 25 * S, 16 * S, 3 * S), border_radius=S)
+        pygame.draw.rect(sw, (90, 55, 30), (17 * S, 28 * S, 2 * S, 5 * S))
+        pygame.draw.circle(sw, (205, 165, 60), (18 * S, 34 * S), 2 * S)
+        extra['sword'] = pygame.transform.smoothscale(sw, (36, 36)).convert_alpha()
+    elif kind == 'spider':
+        leg = (40, 22, 48)
+        for side in (-1, 1):
+            for i in range(4):
+                kx, ky = 26 + side * (12 + i), 20 + i * 6
+                fx, fy = 26 + side * (23 - abs(i - 1.5)), 26 + i * 8
+                L([(26, 28), (kx, ky - 6), (fx, fy)], leg, 2.6)
+        C(26, 33, 12, (62, 26, 78))                                      # abdomen
+        P([(23, 28), (29, 28), (26, 33), (29, 38), (23, 38), (26, 33)], (215, 30, 40))
+        C(26, 19, 8.5, (82, 38, 98))
+        for ex, ey, er in ((22, 16, 1.8), (30, 16, 1.8), (24, 19.5, 1.3), (28, 19.5, 1.3), (20, 19, 1), (32, 19, 1)):
+            C(ex, ey, er, (255, 60, 70))
+        P([(23, 24), (25, 24), (24, 29)], (240, 240, 230))
+        P([(27, 24), (29, 24), (28, 29)], (240, 240, 230))
+    elif kind == 'snake':
+        E(9, 13, 34, 26, (95, 175, 62))
+        E(14, 15, 24, 9, (70, 140, 48))
+        for x in (17, 26, 33):
+            P([(x - 3, 19), (x, 16), (x + 3, 19), (x, 22)], (55, 115, 40))
+        C(18, 24, 4, (250, 220, 60))
+        C(34, 24, 4, (250, 220, 60))
+        Rr(17.3, 21, 1.4, 6, (20, 20, 10))
+        Rr(33.3, 21, 1.4, 6, (20, 20, 10))
+        C(23, 33, 1, (30, 50, 20))
+        C(29, 33, 1, (30, 50, 20))
+        L([(26, 38), (26, 44), (23, 48)], (220, 40, 50), 1.4)
+        L([(26, 44), (29, 48)], (220, 40, 50), 1.4)
+        segs = []
+        for i in range(SNAKE_SEGMENTS):
+            r = 13 - 6 * i / (SNAKE_SEGMENTS - 1)
+            n = int(r * 2 + 4)
+            g = pygame.Surface((n * S, n * S), pygame.SRCALPHA)
+            c = n * S / 2
+            pygame.draw.circle(g, (60, 120, 42), (c, c), r * S)
+            pygame.draw.circle(g, (95, 175, 62), (c, c), (r - 1.3) * S)
+            pygame.draw.polygon(g, (55, 115, 40), [(c - r * 0.55 * S, c), (c, c - r * 0.55 * S), (c + r * 0.55 * S, c), (c, c + r * 0.55 * S)])
+            pygame.draw.circle(g, (150, 210, 110), (c - r * 0.35 * S, c - r * 0.4 * S), r * 0.25 * S)
+            segs.append(pygame.transform.smoothscale(g, (n, n)).convert_alpha())
+        extra['segs'] = segs
+        extra['segs_white'] = []
+        for g in segs:
+            w = g.copy()
+            w.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGBA_MAX)
+            extra['segs_white'].append(w)
+    else:
+        L([(5, 44), (54, 40)], (120, 80, 40), 3)                         # broom
+        P([(0, 38), (10, 41), (11, 46), (1, 51)], (215, 185, 95))
+        for k in range(4):
+            pygame.draw.line(s, (170, 140, 60), (2 * S, (40 + k * 3) * S), (10 * S, (42 + k) * S), S)
+        P([(23, 23), (37, 23), (42, 43), (19, 44)], (105, 40, 145))       # dress
+        Rr(36, 27, 9, 4, (105, 40, 145), 2)                              # arm on the broom
+        C(45, 30, 2.5, (150, 215, 110))
+        C(30, 17, 7.5, (150, 215, 110))
+        P([(36, 16), (41, 19), (36, 20)], (120, 185, 90))                # nose
+        C(28, 15.5, 1.5, (20, 10, 30))
+        C(33, 15.5, 1.5, (20, 10, 30))
+        L([(23, 14), (19, 24)], (230, 110, 40), 2)                       # hair
+        L([(25, 12), (21, 22)], (230, 110, 40), 2)
+        E(16, 9, 29, 6, (28, 22, 34))                                    # hat brim
+        P([(23, 11), (38, 11), (35, 3), (28, -1)], (28, 22, 34))
+        P([(28, -1), (35, 3), (22, 2)], (28, 22, 34))
+        Rr(23, 8, 15, 2.5, (120, 50, 160))
+        cat = pygame.Surface((26 * S, 26 * S), pygame.SRCALPHA)
+        fur = (32, 30, 38)
+        pygame.draw.circle(cat, fur, (13 * S, 16 * S), 8 * S)
+        pygame.draw.circle(cat, fur, (13 * S, 9 * S), 6 * S)
+        pygame.draw.polygon(cat, fur, [(8 * S, 7 * S), (8 * S, 1 * S), (12 * S, 5 * S)])
+        pygame.draw.polygon(cat, fur, [(18 * S, 7 * S), (18 * S, 1 * S), (14 * S, 5 * S)])
+        pygame.draw.circle(cat, (200, 240, 80), (10.5 * S, 9 * S), 1.6 * S)
+        pygame.draw.circle(cat, (200, 240, 80), (15.5 * S, 9 * S), 1.6 * S)
+        pygame.draw.lines(cat, fur, False, [(20 * S, 20 * S), (24 * S, 16 * S), (24 * S, 10 * S)], int(2 * S))
+        pygame.draw.circle(cat, (255, 170, 40), (24 * S, 9 * S), 1.8 * S)  # lit fuse
+        extra['cat'] = pygame.transform.smoothscale(cat, (26, 26)).convert_alpha()
+
+    base = pygame.transform.smoothscale(s, (N, N)).convert_alpha()
+    white = base.copy()
+    white.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGBA_MAX)
+    out = dict(extra)
+    for name, img in (('base', base), ('white', white)):
+        out[(name, 1)] = img
+        out[(name, -1)] = pygame.transform.flip(img, True, False)
+    return out
+
+
+def make_rider_sprite():
+    """Top-down Ghost Rider on his motorcycle, facing +x."""
+    S = SS
+    s = pygame.Surface((38 * S, 24 * S), pygame.SRCALPHA)
+    pygame.draw.ellipse(s, (18, 18, 20), (1 * S, 8 * S, 11 * S, 8 * S))       # back wheel
+    pygame.draw.ellipse(s, (18, 18, 20), (27 * S, 8.5 * S, 10 * S, 7 * S))    # front wheel
+    pygame.draw.rect(s, (90, 20, 15), (8 * S, 8 * S, 22 * S, 8 * S), border_radius=3 * S)
+    pygame.draw.rect(s, (190, 190, 200), (19 * S, 9.5 * S, 7 * S, 5 * S), border_radius=2 * S)   # chrome tank
+    pygame.draw.line(s, (160, 160, 170), (28 * S, 3 * S), (28 * S, 21 * S), int(1.6 * S))          # handlebars
+    pygame.draw.ellipse(s, (35, 28, 26), (11 * S, 4 * S, 11 * S, 16 * S))     # leather jacket
+    pygame.draw.line(s, (35, 28, 26), (18 * S, 6 * S), (28 * S, 4 * S), int(2.4 * S))
+    pygame.draw.line(s, (35, 28, 26), (18 * S, 18 * S), (28 * S, 20 * S), int(2.4 * S))
+    pygame.draw.circle(s, (240, 235, 215), (18 * S, 12 * S), 4.2 * S)         # skull
+    pygame.draw.circle(s, (20, 10, 10), (20 * S, 10.5 * S), 1 * S)
+    pygame.draw.circle(s, (20, 10, 10), (20 * S, 13.5 * S), 1 * S)
+    for k, col in enumerate(((255, 120, 20), (255, 200, 60))):              # flaming hair
+        r = 4.5 - k * 1.8
+        pygame.draw.polygon(s, col, [(15 * S, (12 - r) * S), (5 * S + k * 3 * S, 12 * S), (15 * S, (12 + r) * S)])
+    return pygame.transform.smoothscale(s, (38, 24)).convert_alpha()
+
+
 def make_crate_sprite():
     S = SS
     s = pygame.Surface((30 * S, 30 * S), pygame.SRCALPHA)
@@ -831,6 +1019,73 @@ def resample_loop(pts, step):
         need -= d - pos
     if math.dist(out[-1], out[0]) < step / 2:
         out.pop()
+    return out
+
+
+def blob_outline(gc, gr):
+    """Corners of the outline of a random blob of grid cells (in grid units), or None if this try failed.
+    The blob has no holes and no cells touching only at a corner, so the outline is one simple loop."""
+    cells = {(random.randrange(gc), random.randrange(gr))}
+    size = random.randint(gc * gr // 2, gc * gr * 3 // 4)
+    while len(cells) < size:
+        c, r = random.choice(list(cells))
+        dc, dr = random.choice(((1, 0), (-1, 0), (0, 1), (0, -1)))
+        if 0 <= c + dc < gc and 0 <= r + dr < gr:
+            cells.add((c + dc, r + dr))
+    if len({c for c, _ in cells}) < gc or len({r for _, r in cells}) < gr:
+        return None   # use the whole screen
+    outside = {(c, r) for c in range(-1, gc + 1) for r in range(-1, gr + 1)} - cells
+    seen, stack = {(-1, -1)}, [(-1, -1)]
+    while stack:
+        c, r = stack.pop()
+        for nb in ((c + 1, r), (c - 1, r), (c, r + 1), (c, r - 1)):
+            if nb in outside and nb not in seen:
+                seen.add(nb)
+                stack.append(nb)
+    if seen != outside:
+        return None
+    for c in range(-1, gc):
+        for r in range(-1, gr):
+            a, b, d, e = (c, r) in cells, (c + 1, r) in cells, (c, r + 1) in cells, (c + 1, r + 1) in cells
+            if a == e and b == d and a != b:
+                return None
+    nxt = {}   # outline edges, walked with the blob on the left
+    for c, r in cells:
+        if (c, r - 1) not in cells:
+            nxt[(c + 1, r)] = (c, r)
+        if (c, r + 1) not in cells:
+            nxt[(c, r + 1)] = (c + 1, r + 1)
+        if (c - 1, r) not in cells:
+            nxt[(c, r)] = (c, r + 1)
+        if (c + 1, r) not in cells:
+            nxt[(c + 1, r + 1)] = (c + 1, r)
+    start = next(iter(nxt))
+    loop, v = [start], nxt[start]
+    while v != start:
+        loop.append(v)
+        v = nxt[v]
+    n = len(loop)
+    corners = [loop[i] for i in range(n) if (loop[i][0] - loop[i - 1][0], loop[i][1] - loop[i - 1][1])
+               != (loop[(i + 1) % n][0] - loop[i][0], loop[(i + 1) % n][1] - loop[i][1])]
+    return corners if len(corners) >= 8 else None
+
+
+def fillet_loop(corners, max_r):
+    """Round every corner of a polygon with right angles into a circular arc, as wide as the legs allow."""
+    out, n = [], len(corners)
+    for i in range(n):
+        a, p, b = corners[i - 1], corners[i], corners[(i + 1) % n]
+        la, lb = math.dist(a, p), math.dist(b, p)
+        r = min(max_r, la * 0.48, lb * 0.48)
+        da = ((a[0] - p[0]) / la, (a[1] - p[1]) / la)
+        db = ((b[0] - p[0]) / lb, (b[1] - p[1]) / lb)
+        cx, cy = p[0] + (da[0] + db[0]) * r, p[1] + (da[1] + db[1]) * r
+        a0 = math.atan2(p[1] + da[1] * r - cy, p[0] + da[0] * r - cx)
+        sweep = angle_diff(a0, math.atan2(p[1] + db[1] * r - cy, p[0] + db[0] * r - cx))
+        steps = max(4, int(abs(sweep) * r / 3))   # fine enough that resampling doesn't see kinks
+        for k in range(steps + 1):
+            t = a0 + sweep * k / steps
+            out.append((cx + math.cos(t) * r, cy + math.sin(t) * r))
     return out
 
 
@@ -1086,19 +1341,25 @@ class Track:
         self.generate()
 
     def generate(self):
-        m = TRACK_W / 2 + 26
-        cx, cy = W / 2, (HUD + H) / 2
-        rx, ry = W / 2 - m, (H - HUD) / 2 - m
+        pts = None
         for _ in range(500):
-            n = random.randint(7, 11)
-            ctrl = []
-            for i in range(n):
-                a = (i + random.uniform(-0.3, 0.3)) / n * math.tau
-                k = random.uniform(0.35, 1.0)
-                ctrl.append((cx + math.cos(a) * rx * k, cy + math.sin(a) * ry * k))
-            pts = resample_loop(catmull_loop(ctrl), TRACK_STEP)
-            if self.valid(pts, TRACK_W / 2 + 14):
+            pts = self.outline_track()
+            if pts and self.valid(pts, TRACK_W / 2 + 14):
                 break
+        else:   # very unlikely: fall back to a simple round loop
+            m = TRACK_W / 2 + 26
+            cx, cy = W / 2, (HUD + H) / 2
+            rx, ry = W / 2 - m, (H - HUD) / 2 - m
+            for _ in range(500):
+                n = random.randint(7, 11)
+                ctrl = []
+                for i in range(n):
+                    a = (i + random.uniform(-0.3, 0.3)) / n * math.tau
+                    k = random.uniform(0.35, 1.0)
+                    ctrl.append((cx + math.cos(a) * rx * k, cy + math.sin(a) * ry * k))
+                pts = resample_loop(catmull_loop(ctrl), TRACK_STEP)
+                if self.valid(pts, TRACK_W / 2 + 14):
+                    break
         if random.random() < 0.5:
             pts.reverse()
         n = len(pts)
@@ -1122,6 +1383,8 @@ class Track:
             if all(min(abs(i - r[4]), n - abs(i - r[4])) > n / 5 for r in self.ramps):
                 x, y = self.pts[i]
                 self.ramps.append((x, y, math.cos(self.ang[i]), math.sin(self.ang[i]), i))
+        if not self.ramps:   # every track gets at least one jump
+            return self.generate()
 
         self.trees = []
         for _ in range(400):
@@ -1152,6 +1415,22 @@ class Track:
                 continue
             self.spots.append((x, y))
         self.render()
+
+    @staticmethod
+    def outline_track():
+        """A street circuit: the outline of a random blob of cells on an uneven grid, corners rounded off."""
+        gc, gr = random.choice(((8, 4), (7, 4), (6, 3)))
+        corners = blob_outline(gc, gr)
+        if not corners:
+            return None
+        m = TRACK_W / 2 + 30
+        xs, ys = [0.0], [0.0]
+        for _ in range(gc):
+            xs.append(xs[-1] + random.uniform(0.85, 1.15))
+        for _ in range(gr):
+            ys.append(ys[-1] + random.uniform(0.88, 1.12))
+        corners = [(m + xs[c] / xs[-1] * (W - 2 * m), HUD + m + ys[r] / ys[-1] * (H - HUD - 2 * m)) for c, r in corners]
+        return resample_loop(fillet_loop(corners, random.uniform(60, 120)), TRACK_STEP)
 
     @staticmethod
     def valid(pts, margin):
@@ -1343,6 +1622,7 @@ class Tank:
         self.finished = False
         self.place = 1
         self.lost = 0.0
+        self.stuck = 0.0           # co-op: pinned by a spider's web ball
 
 
 class Ghoul:
@@ -1359,6 +1639,57 @@ class Ghoul:
         self.phase = random.uniform(0, math.tau)
         self.face = 1
         self.dead = False
+
+
+class Boss:
+    """Co-op boss: bigger and faster than a ghoul, with a ranged attack thrown only along a row or column."""
+
+    def __init__(self, kind, x, y, hp):
+        self.kind = kind
+        self.x, self.y = x, y
+        self.hp = self.max_hp = hp
+        self.flash = 0.0
+        self.attack = 0.0            # melee cooldown
+        self.cool = BOSS_ATTACK_CD   # ranged cooldown
+        self.windup = 0.0
+        self.aim = None              # (dx, dy, distance) of the throw being wound up
+        self.claw = 0.0
+        self.emerge = GHOUL_EMERGE * 1.5
+        self.phase = 0.0
+        self.face = 1
+        self.dead = False
+        self.armed = True            # knight: sword in hand
+        self.trail = [(x, y)]        # snake: recent head positions, newest first
+        self.segs = []               # snake: body segment positions, head to tail
+
+
+class BossShot:
+    """Sword (flies out and back along its line), web ball, venom, or a cat lobbed over walls that explodes."""
+
+    def __init__(self, kind, owner, x, y, dx, dy, dist):
+        self.kind, self.owner = kind, owner
+        self.x, self.y = self.sx, self.sy = x, y
+        self.dx, self.dy = dx, dy
+        self.dist = max(dist, 1.0)   # how far it flies
+        self.done = 0.0              # how far it has flown
+        self.back = False            # sword on its way back
+        self.fuse = None             # cat: seconds left once landed
+        self.z = 0.0
+        self.spin = 0.0
+        self.hit = []                # tanks the sword already cut on this throw
+        self.dead = False
+
+
+class Rider:
+    """Race mode's Ghost Rider: rides the track on a burning motorcycle and lashes anyone tailing him."""
+
+    def __init__(self, idx):
+        self.idx = float(idx)        # position along the track, in centerline samples
+        self.lane = self.lane_to = 0.0
+        self.x = self.y = self.ang = 0.0
+        self.dead = 0.0              # seconds until he rides again
+        self.cool = 0.0
+        self.whip = None             # [x, y, time left] the chain lash being drawn
 
 
 class Missile:
@@ -1436,6 +1767,15 @@ class Game:
         self.text_cache = {}
         self.lobby_cache = None
         self.special_sprites = {k: make_special_sprites(k) for k in SPECIALS}
+        self.boss_sprites = {k: make_boss_sprites(k) for k in BOSS_KINDS}
+        self.boss_shadow = pygame.transform.smoothscale(self.ghoul_shadow, (40, 15))
+        self.bosses = []
+        self.boss_shots = []
+        self.boss_pending = None   # (kind, hp) of the boss this wave still has to bring
+        self.webs = {}             # (col, row) -> seconds left; spider webs slow tanks
+        self.rider = None
+        self.rider_sprite = make_rider_sprite()
+        self.rider_cache = {}      # the rider pre-rotated in 5 degree steps
         self.missiles = []
         self.zaps = []           # [[(x, y), ...] chain points, time left] tesla bolts
         self.packet = None       # [x, y, kind, life, age] co-op special weapon packet
@@ -1506,8 +1846,12 @@ class Game:
 
     def clear_entities(self):
         for lst in (self.bullets, self.particles, self.rings, self.flashes, self.texts, self.wrecks,
-                    self.ghouls, self.pickups, self.spectators, self.gibs, self.missiles, self.zaps):
+                    self.ghouls, self.pickups, self.spectators, self.gibs, self.missiles, self.zaps,
+                    self.bosses, self.boss_shots):
             lst.clear()
+        self.webs.clear()
+        self.boss_pending = None
+        self.rider = None
         self.crate = None
         self.crate_timer = CRATE_RESPAWN
         self.packet = None
@@ -1586,6 +1930,8 @@ class Game:
             gh.face = random.choice((1, -1))
             self.spectators.append(gh)
             tr.decal(self.spec_shadow, x, y + 1)   # spectators stay put, so bake their shadows
+        self.rider = Rider(tr.n * 0.3)   # waits a third of a lap ahead of the grid
+        self.update_rider(0.0)
         self.race_time = 0.0
         self.finishers = 0
         self.start_countdown()
@@ -1671,6 +2017,8 @@ class Game:
             self.update_crate(dt)
             self.update_waves(dt)
             self.update_ghouls(dt)
+            self.update_bosses(dt)
+            self.update_boss_shots(dt)
             self.update_pickups(dt)
             self.update_packet(dt)
             if not any(p.tank and p.tank.alive for p in self.players) and self.ending is None:
@@ -1789,10 +2137,15 @@ class Game:
             if not pad:
                 continue
             mx, my = pad.move
+            t.stuck -= dt
+            if t.stuck > 0:   # pinned by a web ball
+                mx = my = 0.0
             if can_act and (mx or my):
                 target = math.atan2(my, mx)
                 t.angle = approach_angle(t.angle, target, TURN_SPEED * dt)
                 fwd = TANK_SPEED * min(1.0, math.hypot(mx, my)) * max(0.0, math.cos(angle_diff(t.angle, target)))
+                if self.webs and self.arena.tile(t.x, t.y)[:2] in self.webs:
+                    fwd *= WEB_SLOW
                 ox, oy = t.x, t.y
                 t.x += math.cos(t.angle) * fwd * dt
                 t.y += math.sin(t.angle) * fwd * dt
@@ -1838,10 +2191,11 @@ class Game:
                     b.x, b.y = self.arena.collide_circle(b.x, b.y, TANK_R)
 
     def fire(self, t):
-        t.cooldown = FIRE_COOLDOWN
-        t.ammo -= 1
-        t.recoil = 5.0
         race = self.mode == 'race'
+        t.cooldown = FIRE_COOLDOWN
+        if not race:   # races have unlimited shells
+            t.ammo -= 1
+        t.recoil = 5.0
         reach = 25 * (RACE_SCALE if race else 1)
         tx = t.x + math.cos(t.turret) * reach
         ty = t.y + math.sin(t.turret) * reach
@@ -1950,7 +2304,12 @@ class Game:
     def targets(self, owner):
         """What specials can hurt: ghouls in co-op, enemy tanks in versus."""
         if self.mode == 'coop':
-            return [(g.x, g.y, GHOUL_R, g) for g in self.ghouls if not g.dead and g.emerge <= 0]
+            out = [(g.x, g.y, GHOUL_R, g) for g in self.ghouls if not g.dead and g.emerge <= 0]
+            for b in self.bosses:
+                if not b.dead and b.emerge <= 0:
+                    out.append((b.x, b.y, BOSS_R, b))
+                    out += [(x, y, 10, b) for x, y in b.segs[1:]]   # the snake's body counts too
+            return out
         return [(t.x, t.y, TANK_R, t) for t in (p.tank for p in self.players if p.tank and p.tank.alive) if t is not owner]
 
     def damage_target(self, obj, owner, x, y, n):
@@ -1959,6 +2318,10 @@ class Game:
                 if obj.dead:
                     return
                 self.hit_ghoul(obj, Bullet(owner, obj.x, obj.y, math.atan2(obj.y - y, obj.x - x)))
+            elif isinstance(obj, Boss):
+                if obj.dead:
+                    return
+                self.hit_boss(obj, owner.player, obj.x, obj.y)
             else:
                 if not obj.alive:
                     return
@@ -1988,15 +2351,24 @@ class Game:
         for start, o in links:
             self.zaps.append([start, (o[0], o[1]), 0.35])
             self.flashes.append([o[0], o[1], 0.0, 0.25, 40])
-        for o in hit:
-            self.damage_target(o[3], t, t.x, t.y, 1)
+        for obj in {id(o[3]): o[3] for o in hit}.values():   # a snake touched in several places is hit once
+            self.damage_target(obj, t, t.x, t.y, 1)
         self.sounds.play('zap')
         self.shake = max(self.shake, 0.15)
         return True
 
     def explode(self, x, y, radius, owner):
-        for ox, oy, r, obj in self.targets(owner):
-            if math.hypot(ox - x, oy - y) < radius + r:
+        """Blast from a player's special (owner is their tank), or from a boss (owner None: it hurts tanks)."""
+        if owner is None:
+            for t in [p.tank for p in self.players if p.tank and p.tank.alive]:
+                if math.hypot(t.x - x, t.y - y) < radius + TANK_R:
+                    self.hurt_tank(t, x, y)
+        else:
+            hit = {}
+            for ox, oy, r, obj in self.targets(owner):
+                if math.hypot(ox - x, oy - y) < radius + r:
+                    hit[id(obj)] = obj
+            for obj in hit.values():
                 self.damage_target(obj, owner, x, y, BLAST_DAMAGE)
         for r in range(int((y - radius - HUD) // T), int((y + radius - HUD) // T) + 1):
             for c in range(int((x - radius) // T), int((x + radius) // T) + 1):
@@ -2138,6 +2510,13 @@ class Game:
                             self.hit_ghoul(gh, b)
                             b.dead = True
                             break
+                    for bs in self.bosses:
+                        if b.dead or bs.dead or bs.emerge > 0:
+                            continue
+                        if ((bs.x - b.x) ** 2 + (bs.y - b.y) ** 2 < (BOSS_R + BULLET_R) ** 2
+                                or any((x - b.x) ** 2 + (y - b.y) ** 2 < (10 + BULLET_R) ** 2 for x, y in bs.segs[1:])):
+                            self.hit_boss(bs, b.owner.player, b.x, b.y)
+                            b.dead = True
                     if b.dead:
                         break
                     continue
@@ -2161,6 +2540,12 @@ class Game:
                     self.sparks((a.x + b.x) / 2, (a.y + b.y) / 2, (255, 255, 200), 10)
                     self.sounds.play('bounce')
         self.bullets = [b for b in self.bullets if not b.dead]
+
+    def hurt_tank(self, t, x, y):
+        """Monster damage: one hit, then a moment of invulnerability."""
+        if t.alive and t.invuln <= 0:
+            t.invuln = TANK_HIT_INVULN
+            self.hit_tank(t, x, y)
 
     def hit_tank(self, t, x, y):
         t.hp -= 1
@@ -2213,22 +2598,33 @@ class Game:
             if self.wave_break <= 0:
                 self.start_wave()
             return
-        if self.wave_to_spawn > 0:
+        if self.wave_to_spawn > 0 or self.boss_pending:
             self.spawn_timer -= dt
             if self.spawn_timer <= 0:
-                self.spawn_ghoul(tanks)
-                self.wave_to_spawn -= 1
+                if self.boss_pending:
+                    self.spawn_boss(tanks)
+                else:
+                    self.spawn_ghoul(tanks)
+                    self.wave_to_spawn -= 1
                 self.spawn_timer = max(0.5, 1.6 - 0.06 * self.wave)
-        elif not self.ghouls:
+        elif not self.ghouls and not self.bosses:
             self.wave_break = WAVE_BREAK
             self.banner = [f"WAVE {self.wave} CLEARED", 2.5]
             self.sounds.play('pickup')
+            for t in tanks:   # every cleared wave repairs the tanks
+                if t.hp < t.max_hp:
+                    t.hp = t.max_hp
+                    self.texts.append(["REPAIRED", t.x, t.y - 24, 0.0, (120, 230, 120)])
 
     def start_wave(self):
         self.wave += 1
         self.wave_to_spawn = self.wave      # wave N brings N ghouls
         self.spawn_timer = 0.6
         self.banner = [f"WAVE {self.wave}", 2.0]
+        if self.wave % BOSS_EVERY == 0:     # ...and every third one a boss as well
+            k = self.wave // BOSS_EVERY - 1
+            self.boss_pending = (BOSS_KINDS[k % len(BOSS_KINDS)], BOSS_HP + BOSS_HP_GROWTH * (k // len(BOSS_KINDS)))
+            self.banner = [f"WAVE {self.wave}: BOSS", 2.0]
         self.sounds.play('wave')
         for p in self.players:
             if not (p.tank and p.tank.alive):
@@ -2237,7 +2633,8 @@ class Game:
                 self.rings.append([p.tank.x, p.tank.y, 0.0, 0.4])
             p.tank.ammo = MAX_AMMO
 
-    def spawn_ghoul(self, tanks):
+    def spawn_spot(self, tanks):
+        """A reachable empty tile, preferably at the edge and far from every tank."""
         if self.flow is None:
             self.flow = self.compute_flow(tanks)
         g = self.arena.grid
@@ -2246,9 +2643,13 @@ class Game:
         far = [cr for cr in cand if all(math.hypot(tile_center(*cr)[0] - t.x, tile_center(*cr)[1] - t.y) > 7 * T for t in tanks)]
         edge = [cr for cr in far if cr[0] in (1, COLS - 2) or cr[1] in (1, ROWS - 2)]
         pool = edge or far or cand
-        if not pool:
+        return tile_center(*random.choice(pool)) if pool else None
+
+    def spawn_ghoul(self, tanks):
+        spot = self.spawn_spot(tanks)
+        if not spot:
             return
-        x, y = tile_center(*random.choice(pool))
+        x, y = spot
         kind = random.choice(GHOUL_KINDS)
         self.ghouls.append(Ghoul(kind, x, y))
         if kind != 'ghost':
@@ -2417,6 +2818,242 @@ class Game:
         if random.random() < AMMO_DROP_CHANCE:
             self.pickups.append([gh.x, gh.y, 8.0])
 
+    def spawn_boss(self, tanks):
+        kind, hp = self.boss_pending
+        spot = self.spawn_spot(tanks)
+        if not spot:
+            return
+        self.boss_pending = None
+        b = Boss(kind, spot[0], spot[1], hp)
+        self.bosses.append(b)
+        self.banner = [BOSS_NAMES[kind], 2.5]
+        if kind != 'witch':
+            self.arena.scorch_mark(b.x, b.y, big=True)
+        for _ in range(20):
+            self.particles.append([b.x + random.uniform(-16, 16), b.y + random.uniform(-10, 14), random.uniform(-25, 25),
+                                   random.uniform(-50, -15), 1.3, 1.3, 'smoke', random.uniform(6, 11)])
+        self.rings.append([b.x, b.y, 0.0, 0.6])
+        self.shake = max(self.shake, 0.4)
+        self.sounds.play('boss')
+
+    def boss_aim(self, b, tanks):
+        """A tank lined up with the boss on a row or column: (dx, dy, distance). Never diagonal."""
+        for t in sorted(tanks, key=lambda t: (t.x - b.x) ** 2 + (t.y - b.y) ** 2):
+            dx, dy = t.x - b.x, t.y - b.y
+            if abs(dy) < BOSS_ALIGN and T < abs(dx) < BOSS_RANGE:
+                ax, ay, d = math.copysign(1, dx), 0, abs(dx)
+            elif abs(dx) < BOSS_ALIGN and T < abs(dy) < BOSS_RANGE:
+                ax, ay, d = 0, math.copysign(1, dy), abs(dy)
+            else:
+                continue
+            if b.kind != 'witch':   # her cats are lobbed over walls; everything else needs a clear line
+                if any(self.arena.bullet_hit(b.x + ax * k, b.y + ay * k) for k in range(BOSS_R, int(d), 10)):
+                    continue
+            return ax, ay, d
+        return None
+
+    def boss_throw(self, b):
+        ax, ay, d = b.aim
+        x, y = b.x + ax * BOSS_R, b.y + ay * BOSS_R
+        kind = {'knight': 'sword', 'spider': 'web', 'snake': 'spit', 'witch': 'cat'}[b.kind]
+        dist = {'sword': min(BOSS_RANGE, d + 3 * T), 'web': d + T, 'spit': BOSS_RANGE, 'cat': d}[kind]
+        self.boss_shots.append(BossShot(kind, b, x, y, ax, ay, dist))
+        if b.kind == 'knight':
+            b.armed = False
+        b.face = int(ax) or b.face
+        b.cool = BOSS_ATTACK_CD
+        self.sounds.play('meow' if kind == 'cat' else 'throw')
+
+    def witch_target(self, b, t):
+        """She keeps her distance and tries to line up with a tank, from wherever is closest."""
+        d = 5 * T
+        spots = [(t.x + d, t.y), (t.x - d, t.y), (t.x, t.y + d), (t.x, t.y - d)]
+        spots = [(clamp(x, T, W - T), clamp(y, HUD + T, H - T)) for x, y in spots]
+        return min(spots, key=lambda p: (p[0] - b.x) ** 2 + (p[1] - b.y) ** 2)
+
+    def update_bosses(self, dt):
+        for k in list(self.webs):
+            self.webs[k] -= dt
+            if self.webs[k] <= 0:
+                del self.webs[k]
+        tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        if tanks and self.flow is None:
+            self.flow = self.compute_flow(tanks)
+        for b in self.bosses:
+            b.flash -= dt
+            b.attack -= dt
+            if b.emerge > 0:
+                b.emerge -= dt
+                continue
+            if not tanks:
+                continue
+            nearest = min(tanks, key=lambda t: (t.x - b.x) ** 2 + (t.y - b.y) ** 2)
+            flying = b.kind == 'witch'
+            b.phase += dt * 8
+            if b.windup > 0:   # stands still while winding up the throw
+                b.windup -= dt
+                if b.windup <= 0:
+                    self.boss_throw(b)
+            else:
+                b.cool -= dt
+                if b.cool <= 0 and b.armed:
+                    b.aim = self.boss_aim(b, tanks)
+                    if b.aim:
+                        b.windup = BOSS_WINDUP
+                if flying:
+                    tx, ty, brick = *self.witch_target(b, nearest), None
+                else:
+                    tx, ty, brick = self.ghoul_step_target(b, nearest)
+                dx, dy = tx - b.x, ty - b.y
+                d = math.hypot(dx, dy)
+                if d > 1:
+                    step = min(d, BOSS_SPEED * dt)
+                    b.x += dx / d * step
+                    b.y += dy / d * step
+                    if abs(dx) > 2:
+                        b.face = 1 if dx > 0 else -1
+                if not flying:
+                    b.x, b.y = self.arena.collide_circle(b.x, b.y, BOSS_R)
+                    if brick and d < T / 2 + BOSS_R + 4:
+                        b.claw -= dt
+                        if b.claw <= 0:
+                            b.claw = 0.8
+                            self.damage_brick(*brick)
+            if b.kind == 'spider':   # webs wherever she walks
+                c, r, v = self.arena.tile(b.x, b.y)
+                if v in (EMPTY, BUSH) and (c, r) not in self.webs:
+                    if len(self.webs) >= WEB_MAX:
+                        del self.webs[min(self.webs, key=self.webs.get)]
+                    self.webs[(c, r)] = WEB_LIFE
+            if b.kind == 'snake':
+                if math.dist((b.x, b.y), b.trail[0]) >= SNAKE_TRAIL_STEP:
+                    b.trail.insert(0, (b.x, b.y))
+                    del b.trail[SNAKE_SEGMENTS * 5:]
+                b.segs = [(b.x, b.y)] + [b.trail[min(len(b.trail) - 1, k * 5)] for k in range(1, SNAKE_SEGMENTS)]
+            for t in tanks:
+                dx, dy = b.x - t.x, b.y - t.y
+                d = math.hypot(dx, dy) or 0.01
+                if d < TANK_R + BOSS_R:
+                    if not flying:
+                        b.x = t.x + dx / d * (TANK_R + BOSS_R)
+                        b.y = t.y + dy / d * (TANK_R + BOSS_R)
+                    if b.attack <= 0 and t.invuln <= 0:
+                        b.attack = GHOUL_ATTACK_CD
+                        self.hurt_tank(t, (t.x + b.x) / 2, (t.y + b.y) / 2)
+                for x, y in b.segs[1:]:   # the snake's body is solid
+                    dx, dy = t.x - x, t.y - y
+                    d = math.hypot(dx, dy) or 0.01
+                    if d < TANK_R + 10:
+                        t.x, t.y = x + dx / d * (TANK_R + 10), y + dy / d * (TANK_R + 10)
+                        t.x, t.y = self.arena.collide_circle(t.x, t.y, TANK_R)
+            tanks = [t for t in tanks if t.alive]
+
+    def update_boss_shots(self, dt):
+        tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        for s in self.boss_shots:
+            if s.kind == 'cat':   # lobbed in an arc over everything, then hisses and goes off
+                if s.fuse is None:
+                    s.done = min(s.dist, s.done + CAT_SPEED * dt)
+                    k = s.done / s.dist
+                    s.x, s.y = s.sx + s.dx * s.done, s.sy + s.dy * s.done
+                    s.z = 4 * (30 + s.dist * 0.2) * k * (1 - k)
+                    s.spin += dt * 12
+                    if k >= 1:
+                        s.fuse = CAT_FUSE
+                else:
+                    s.fuse -= dt
+                    if s.fuse <= 0:
+                        self.explode(s.x, s.y, CAT_RADIUS, None)
+                        s.dead = True
+                continue
+            speed = SWORD_SPEED if s.kind == 'sword' else SPIT_SPEED
+            s.spin += dt * 18
+            steps = max(1, math.ceil(speed * dt / 6))
+            for _ in range(steps):
+                sd = speed * dt / steps
+                if s.back:   # the sword returns along the line it flew out on
+                    s.done -= sd
+                    s.x, s.y = s.sx + s.dx * s.done, s.sy + s.dy * s.done
+                    if s.done <= 0:
+                        s.dead = True
+                        s.owner.armed = True
+                        break
+                else:
+                    nx, ny = s.x + s.dx * sd, s.y + s.dy * sd
+                    hit = self.arena.bullet_hit(nx, ny)
+                    if hit or s.done + sd >= s.dist or not (0 < nx < W and HUD < ny < H):
+                        if hit and hit[2] == BRICK:
+                            self.damage_brick(hit[0], hit[1])
+                        self.shot_ends(s)
+                        break
+                    s.x, s.y = nx, ny
+                    s.done += sd
+                for t in tanks:
+                    if (t.x - s.x) ** 2 + (t.y - s.y) ** 2 < (TANK_R + 9) ** 2 and t not in s.hit:
+                        s.hit.append(t)
+                        self.hurt_tank(t, s.x, s.y)
+                        if s.kind == 'web':
+                            t.stuck = WEB_STUCK
+                        if s.kind != 'sword':
+                            self.shot_ends(s)
+                        break
+                if s.dead:
+                    break
+        self.boss_shots = [s for s in self.boss_shots if not s.dead]
+
+    def shot_ends(self, s):
+        """A shot reached its range or hit something: swords turn back, web balls leave a web, venom splashes."""
+        if s.kind == 'sword':
+            s.back = True
+            self.sparks(s.x, s.y, (220, 220, 240), 6)
+            return
+        s.dead = True
+        if s.kind == 'web':
+            c, r, v = self.arena.tile(s.x - s.dx * 4, s.y - s.dy * 4)
+            if v in (EMPTY, BUSH):
+                self.webs[(c, r)] = WEB_LIFE
+        col = (235, 235, 245) if s.kind == 'web' else (150, 230, 60)
+        self.sparks(s.x, s.y, col, 10)
+
+    def hit_boss(self, b, player, x, y):
+        if b.dead:
+            return
+        b.hp -= 1
+        b.flash = 0.1
+        self.sparks(x, y, BOSS_COLORS[b.kind], 10)
+        if b.hp <= 0:
+            self.kill_boss(b, player)
+        else:
+            self.sounds.play('ghoulhit')
+
+    def kill_boss(self, b, player):
+        b.dead = True
+        self.bosses.remove(b)
+        player.kills += 1
+        col = BOSS_COLORS[b.kind]
+        for x, y in b.segs[1:] or [(b.x, b.y)]:
+            for _ in range(6):
+                a = random.uniform(0, math.tau)
+                sp = random.uniform(40, 220)
+                self.particles.append([x, y, math.cos(a) * sp, math.sin(a) * sp, 0.8, 0.8, 'debris', random.uniform(3, 7), col])
+        for _ in range(40):
+            a = random.uniform(0, math.tau)
+            sp = random.uniform(40, 260)
+            life = random.uniform(0.4, 0.9)
+            self.particles.append([b.x, b.y, math.cos(a) * sp, math.sin(a) * sp, life, life, 'fire', random.uniform(6, 13)])
+        if b.kind != 'witch':
+            self.arena.scorch_mark(b.x, b.y, big=True)
+        self.rings.append([b.x, b.y, 0.0, 0.6])
+        self.flashes.append([b.x, b.y, 0.0, 0.6, 180])
+        self.shake = max(self.shake, 0.8)
+        self.banner = ["BOSS DEFEATED", 2.5]
+        self.sounds.play('explode')
+        self.rumble(player, 1.0, 1.0, 500)
+        for k in range(3):   # loot
+            a = k * math.tau / 3
+            x, y = self.arena.collide_circle(b.x + math.cos(a) * 24, b.y + math.sin(a) * 24, 8)
+            self.pickups.append([x, y, 12.0])
+
     def update_pickups(self, dt):
         tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
         for pk in self.pickups:
@@ -2437,6 +3074,7 @@ class Game:
             self.race_time += dt
         self.update_race_tanks(dt)
         self.update_race_bullets(dt)
+        self.update_rider(dt)
         self.update_spectators(dt)
         self.update_gibs(dt)
         tanks = [p.tank for p in self.players if p.tank]
@@ -2589,7 +3227,6 @@ class Game:
                 if lap >= RACE_LAPS:
                     self.finish(t)
                 else:
-                    t.ammo = MAX_AMMO
                     self.sounds.play('pickup')
                     self.texts.append([f"LAP {lap + 1}", t.x, t.y - 20, 0.0, t.player.color])
             far = d2 > (TRACK_W / 2 + 60) ** 2 and t.z <= 0
@@ -2652,6 +3289,11 @@ class Game:
                     self.sparks(b.x, b.y, (150, 120, 70), 6)
                     b.dead = True
                     break
+                r = self.rider
+                if r and r.dead <= 0 and b.z < 16 and (r.x - b.x) ** 2 + (r.y - b.y) ** 2 < (RIDER_R + BULLET_R) ** 2:
+                    self.kill_rider()
+                    b.dead = True
+                    break
                 for gh in self.spectators:
                     if b.z < 16 and (gh.x - b.x) ** 2 + (gh.y - b.y) ** 2 < (8 + BULLET_R) ** 2:
                         self.kill_spectator(gh, b.owner.player, b.vx, b.vy)
@@ -2671,6 +3313,80 @@ class Game:
             if not b.dead:
                 self.particles.append([b.x, b.y - b.z, 0, 0, 0.12, 0.12, 'spark', 2.0, b.owner.player.color])
         self.bullets = [b for b in self.bullets if not b.dead]
+
+    def update_rider(self, dt):
+        r, tr = self.rider, self.track
+        if r is None:
+            return
+        r.cool -= dt
+        if r.whip:
+            r.whip[2] -= dt
+            if r.whip[2] <= 0:
+                r.whip = None
+        if r.dead > 0:
+            r.dead -= dt
+            if r.dead <= 0:   # back from the dead in a burst of flame
+                for _ in range(24):
+                    a = random.uniform(0, math.tau)
+                    sp = random.uniform(30, 160)
+                    self.particles.append([r.x, r.y, math.cos(a) * sp, math.sin(a) * sp, 0.5, 0.5, 'fire', random.uniform(4, 9)])
+                self.rings.append([r.x, r.y, 0.0, 0.4])
+                self.sounds.play('rocket')
+            return
+        if self.state == 'play':
+            r.idx = (r.idx + RIDER_SPEED * dt / TRACK_STEP) % tr.n
+            if random.random() < dt * 0.6:
+                r.lane_to = random.uniform(-TRACK_W / 4, TRACK_W / 4)
+            r.lane += (r.lane_to - r.lane) * min(1.0, dt * 1.5)
+        i = int(r.idx)
+        j, f = (i + 1) % tr.n, r.idx - i
+        x = tr.pts[i][0] + (tr.pts[j][0] - tr.pts[i][0]) * f
+        y = tr.pts[i][1] + (tr.pts[j][1] - tr.pts[i][1]) * f
+        r.x, r.y, r.ang = x + tr.nx[i] * r.lane, y + tr.ny[i] * r.lane, tr.ang[i]
+        if self.state != 'play':
+            return
+        ca, sa = math.cos(r.ang), math.sin(r.ang)
+        if random.random() < dt * 50:   # the bike is on fire
+            self.particles.append([r.x - ca * 16 + random.uniform(-4, 4), r.y - sa * 16 + random.uniform(-4, 4),
+                                   -ca * 60 + random.uniform(-20, 20), -sa * 60 + random.uniform(-20, 20), 0.35, 0.35, 'fire', random.uniform(3, 6)])
+        if r.cool > 0:
+            return
+        for t in (p.tank for p in self.players if p.tank):
+            if t.finished or t.z > 12 or t.invuln > 0:
+                continue
+            dx, dy = t.x - r.x, t.y - r.y
+            along, side = dx * ca + dy * sa, -dx * sa + dy * ca
+            if -RIDER_REACH < along < -8 and abs(side) < 36:   # tailing him: he lashes back with his chain
+                r.cool = RIDER_LASH_CD
+                r.whip = [t.x, t.y, 0.25]
+                t.vx *= 0.3
+                t.vy *= 0.3
+                t.angle += random.choice((-1, 1)) * random.uniform(1.2, 2.0)
+                if t.z <= 0 and t.ramp is None:
+                    t.z, t.vz = 0.01, 150.0
+                t.flash = 0.15
+                t.invuln = 1.2
+                for _ in range(14):
+                    a = random.uniform(0, math.tau)
+                    self.particles.append([t.x, t.y, math.cos(a) * 90, math.sin(a) * 90, 0.4, 0.4, 'fire', random.uniform(3, 6)])
+                self.shake = max(self.shake, 0.2)
+                self.sounds.play('lash')
+                self.rumble(t.player, 0.8, 0.8, 300)
+                break
+
+    def kill_rider(self):
+        r = self.rider
+        r.dead = RIDER_RESPAWN
+        r.whip = None
+        for _ in range(30):
+            a = random.uniform(0, math.tau)
+            sp = random.uniform(40, 220)
+            life = random.uniform(0.3, 0.7)
+            self.particles.append([r.x, r.y, math.cos(a) * sp, math.sin(a) * sp, life, life, 'fire', random.uniform(5, 10)])
+        self.flashes.append([r.x, r.y, 0.0, 0.4, 90])
+        self.texts.append(["BANISHED!", r.x, r.y - 20, 0.0, (255, 150, 50)])
+        self.shake = max(self.shake, 0.3)
+        self.sounds.play('explode')
 
     def bump_tank(self, t, b):
         """Race hits do no damage: they shove the tank, spin it a little and pop it off the ground."""
@@ -2866,6 +3582,73 @@ class Game:
             for i in range(GHOUL_HP):
                 self.world.fill((220, 60, 50) if i < gh.hp else (60, 60, 65), (gh.x - 14 + i * 6, gh.y - 26, 5, 4))
 
+    def draw_webs(self, w):
+        for (c, r), life in self.webs.items():
+            col = lerp_color(FLOOR, (215, 215, 225), min(1.0, life / 3))   # fades out at the end
+            x, y = tile_center(c, r)
+            h = T / 2 - 2
+            for dx, dy in ((h, 0), (0, h), (h * 0.7, h * 0.7), (h * 0.7, -h * 0.7)):
+                pygame.draw.line(w, col, (x - dx, y - dy), (x + dx, y + dy))
+            for k in (0.4, 0.8):
+                pygame.draw.polygon(w, col, [(x + math.cos(a * math.pi / 4) * h * k, y + math.sin(a * math.pi / 4) * h * k)
+                                             for a in range(8)], 1)
+
+    def draw_boss(self, w, b):
+        spr = self.boss_sprites[b.kind]
+        glow = b.windup > 0 and int(self.now * 16) % 2
+        state = 'white' if b.flash > 0 or glow else 'base'
+        scale = 1.0 - max(0.0, b.emerge) / (GHOUL_EMERGE * 1.5)
+        if scale <= 0.05:
+            return
+        if b.windup > 0 and b.aim:   # where the throw will go: always straight along a row or column
+            ax, ay, d = b.aim
+            for k in range(BOSS_R + 6, int(d), 22):
+                x, y = b.x + ax * k, b.y + ay * k
+                pygame.draw.line(w, (255, 70, 50), (x, y), (x + ax * 10, y + ay * 10), 3)
+        flying = b.kind == 'witch'
+        if b.kind == 'snake':
+            segs = spr['segs_white' if b.flash > 0 else 'segs']
+            for k in range(len(b.segs) - 1, 0, -1):
+                blit_center(w, segs[k], b.segs[k][0], b.segs[k][1])
+        bob = math.sin(self.now * 3 + b.phase * 0.1) * 4 - 14 if flying else -abs(math.sin(b.phase)) * 2
+        blit_center(w, self.boss_shadow, b.x, b.y + (26 if flying else 20))
+        if b.kind == 'knight':
+            add_glow(w, (40, 20, 70), b.x, b.y, 44)
+        img = spr[(state, b.face)]
+        if scale < 1:
+            img = pygame.transform.rotozoom(img, 0, scale)
+        blit_center(w, img, b.x, b.y - 4 + bob)
+        if b.kind == 'knight' and b.armed and scale >= 1:
+            sw = spr['sword'] if b.face > 0 else pygame.transform.flip(spr['sword'], True, False)
+            blit_center(w, sw, b.x + b.face * 22, b.y - 6 + bob)
+
+    def draw_boss_shots(self, w):
+        for s in self.boss_shots:
+            if s.kind == 'sword':
+                img = pygame.transform.rotate(self.boss_sprites['knight']['sword'], -math.degrees(s.spin))
+                add_glow(w, (50, 30, 80), s.x, s.y, 26)
+                blit_center(w, img, s.x, s.y)
+            elif s.kind == 'web':
+                pygame.draw.circle(w, (235, 235, 245), (s.x, s.y), 7)
+                for k in range(3):
+                    a = s.spin + k * math.pi / 3
+                    pygame.draw.line(w, (170, 170, 185), (s.x - math.cos(a) * 9, s.y - math.sin(a) * 9),
+                                     (s.x + math.cos(a) * 9, s.y + math.sin(a) * 9))
+            elif s.kind == 'spit':
+                add_glow(w, (40, 90, 10), s.x, s.y, 20)
+                pygame.draw.circle(w, (150, 230, 60), (s.x, s.y), 6)
+                pygame.draw.circle(w, (220, 255, 160), (s.x - 2, s.y - 2), 2)
+            else:
+                cat = self.boss_sprites['witch']['cat']
+                blit_center(w, self.ghoul_shadow, s.x, s.y + 8)
+                if s.fuse is not None:
+                    if int(s.fuse * 12) % 2:
+                        pygame.draw.circle(w, (255, 60, 40), (s.x, s.y), CAT_RADIUS, 2)
+                    blit_center(w, cat, s.x, s.y - 4)
+                else:
+                    blit_center(w, pygame.transform.rotate(cat, -math.degrees(s.spin)), s.x, s.y - s.z)
+                add_glow(w, (120, 60, 10), s.x + 9, s.y - s.z - 9, 12)   # the fuse
+
     def draw_race_tank(self, dst, t):
         p = t.player
         white = t.flash > 0
@@ -2895,6 +3678,8 @@ class Game:
         # everything standing on the ground is drawn back to front
         objs = [(y, 0, (x, y, v)) for x, y, v in tr.trees]
         objs += [(gh.y, 1, gh) for gh in self.spectators]
+        if self.rider and self.rider.dead <= 0:
+            objs.append((self.rider.y, 3, self.rider))
         air = []
         for t in tanks:
             if t.invuln > 0 and t.flash <= 0 and int(self.now * 12) % 2:
@@ -2905,6 +3690,8 @@ class Game:
             if kind == 0:
                 img = tr.tree_sprites[o[2]]
                 w.blit(img, (o[0] - 18, o[1] - 42))
+            elif kind == 3:
+                self.draw_rider(w, o)
             elif kind == 1:
                 ghost = o.kind == 'ghost'
                 if o.attack > 0:
@@ -2940,6 +3727,20 @@ class Game:
             img = self.font_hud.render(s, True, col)
             img.set_alpha(int(255 * (1 - t)))
             w.blit(img, img.get_rect(center=(round(x), round(y))))
+
+    def draw_rider(self, w, r):
+        step = round(r.ang / math.tau * 72) % 72
+        img = self.rider_cache.get(step)
+        if img is None:
+            img = self.rider_cache[step] = pygame.transform.rotozoom(self.rider_sprite, -step * 5, 1)
+        blit_center(w, self.spec_shadow, r.x + 2, r.y + 4)
+        add_glow(w, (130, 50, 10), r.x, r.y, 30)
+        blit_center(w, img, r.x, r.y)
+        if r.whip:   # burning chain
+            pts = [(r.x + (r.whip[0] - r.x) * k / 6 + random.uniform(-4, 4), r.y + (r.whip[1] - r.y) * k / 6 + random.uniform(-4, 4))
+                   for k in range(7)]
+            pygame.draw.lines(w, (255, 140, 40), False, pts, 3)
+            pygame.draw.lines(w, (255, 230, 150), False, pts, 1)
 
     def draw_specials(self, w, tanks):
         for t in tanks:
@@ -3021,9 +3822,14 @@ class Game:
                 blit_center(w, pygame.transform.rotozoom(self.special_sprites[kind][0], math.sin(self.now * 3) * 8,
                                                          max(0.05, pop * (1.1 + 0.08 * math.sin(self.now * 7)))), x, y - 2)
                 pygame.draw.arc(w, col, (x - 24, y - 26, 48, 48), math.pi / 2, math.pi / 2 + math.tau * life / SPECIAL_PACKET_LIFE, 2)
+        if self.webs:
+            self.draw_webs(w)
         for gh in self.ghouls:
             if gh.kind != 'ghost':
                 self.draw_ghoul(w, gh)
+        for b in self.bosses:
+            if b.kind != 'witch':
+                self.draw_boss(w, b)
         for t in tanks:
             if t.invuln > 0 and t.flash <= 0 and int(self.now * 12) % 2:
                 continue
@@ -3048,6 +3854,7 @@ class Game:
         near = None
         if not self.arena.sway:   # bushes are in the ground layer; redraw only those over something
             near = [(t.x, t.y) for t in tanks] + [(g.x, g.y) for g in self.ghouls] + [(b.x, b.y) for b in self.bullets]
+            near += [(b.x, b.y) for b in self.bosses] + [p for b in self.bosses for p in b.segs] + [(s.x, s.y) for s in self.boss_shots]
             near += [(p[0], p[1]) for p in self.pickups] + [(m.x, m.y) for m in self.missiles]
             if self.crate:
                 near.append(self.crate[:2])
@@ -3057,6 +3864,11 @@ class Game:
         for gh in self.ghouls:   # ghosts float above walls and bushes
             if gh.kind == 'ghost':
                 self.draw_ghoul(w, gh)
+        for b in self.bosses:    # and so does the witch
+            if b.kind == 'witch':
+                self.draw_boss(w, b)
+        if self.boss_shots:
+            self.draw_boss_shots(w)
         for x, y, t, mt in self.rings:
             k = t / mt
             pygame.draw.circle(w, lerp_color((255, 220, 150), (255, 90, 30), k), (x, y), 10 + 90 * k, max(1, int(7 * (1 - k))))
@@ -3116,9 +3928,14 @@ class Game:
     def draw_overlay(self):
         cy = HUD + ROWS * T // 2
         if self.mode == 'coop' and self.state in ('countdown', 'play'):
-            left = len(self.ghouls) + self.wave_to_spawn
+            left = len(self.ghouls) + self.wave_to_spawn + len(self.bosses) + bool(self.boss_pending)
             if self.wave:
                 self.text(f"WAVE {self.wave}   •   {left} LEFT", self.font_hud, (230, 220, 200), (W // 2, HUD + 18))
+            for k, b in enumerate(self.bosses):   # boss health bars
+                y = HUD + 44 + k * 34
+                self.text(BOSS_NAMES[b.kind], self.font_tiny, BOSS_COLORS[b.kind], (W // 2, y))
+                self.screen.fill((20, 20, 24), (W // 2 - 182, y + 9, 364, 12))
+                self.screen.fill((200, 40, 50), (W // 2 - 180, y + 11, int(360 * b.hp / b.max_hp), 8))
             if self.banner and self.state == 'play':
                 self.text(self.banner[0], self.font_big, (200, 255, 170) if "CLEARED" in self.banner[0] else (255, 120, 90), (W // 2, cy))
         if self.mode == 'race' and self.state in ('countdown', 'play'):
@@ -3266,7 +4083,7 @@ class Game:
         self.dim(170)
         self.text("TANK ARENA", self.font_big, (240, 220, 120), (W // 2, 130))
         self.text("Left stick drive   •   Right stick aim   •   RT / RB / A fire   •   LT / LB / X special", self.font_small, (200, 200, 200), (W // 2, 200))
-        ammo = "refilled every lap" if self.mode == 'race' else "grab the ammo crates to reload"
+        ammo = "unlimited in races" if self.mode == 'race' else "grab the ammo crates to reload"
         self.text(f"{MAX_AMMO} shells per tank - {ammo}", self.font_hud, (230, 200, 110), (W // 2, 236))
         labels = dict(key[1])
         for i in range(MAX_PLAYERS):

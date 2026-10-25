@@ -49,7 +49,16 @@ Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VER
 - A ghoul's touch costs a tank 1 HP. Tanks have 5 HP in co-op, and there's no friendly fire.
 - Ammo refills at the start of each wave, crates still appear, and killed ghouls sometimes drop a +3 ammo box.
 - When only one tank is left standing (with 2+ players), special weapon packets start appearing for it. Each packet gives one shot of a special weapon, and a new one shows up a few seconds after it's used or picked up.
-- Fallen tanks come back at the next wave. When every tank is down the game ends and shows the wave you reached and each player's kills.
+- Every cleared wave fully repairs all surviving tanks. Fallen tanks come back at the next wave. When every tank is down the game ends and shows the wave you reached and each player's kills.
+
+### Bosses
+Every third wave brings a boss along with its ghouls. A health bar at the top shows how it's doing. Bosses are bigger and faster than ghouls, take 25 hits, and aren't slowed by hits. Each has a ranged attack that only ever flies straight along a row or a column, never diagonally. Before it throws, the boss flashes and a red dashed line shows exactly where the attack will go, so get out of line. A killed boss drops three ammo boxes.
+1. **Wave 3, the Cursed Knight:** throws his sword, which flies out and comes back along the same line. He can't throw again until he's caught it.
+2. **Wave 6, the Spider Queen:** leaves sticky webs on every tile she walks over. Webs slow tanks to under half speed and fade after 15 s. She also spits web balls that pin a tank in place for a second.
+3. **Wave 9, the Great Snake:** long. Its body blocks tanks, and a shot anywhere on it counts. Spits venom.
+4. **Wave 12, the Witch:** flies on her broom over walls, keeps her distance and lines up with you. She lobs cats over walls; a cat lands, hisses for half a second, then explodes.
+
+After the witch the order starts again from the knight, with 15 more hits each time round.
 
 ## Special weapons
 Fired with LT / LB / X (keyboard: F or `/`). An icon next to your tank shows the weapon and its recharge.
@@ -58,12 +67,13 @@ Fired with LT / LB / X (keyboard: F or `/`). An icon next to your tank shows the
 - **Tesla coil:** zaps the nearest target within range, then jumps to every ghoul (or tank) touching it, and on down the chain. Each one loses 1 health. If nothing is in range, the charge isn't used.
 
 ## Race mode
-The third mode in the lobby. Smaller, faster tanks race around a randomly generated circuit that fills the whole screen.
+The third mode in the lobby. Smaller, faster tanks race around a randomly generated street circuit (hairpins, chicanes and long straights) that fills the whole screen.
 - 5 laps; the first tank across the line wins the race, and the first to 3 race wins takes the match. A new track is generated for every race.
 - Tanks accelerate quickly and drift: steer hard at speed and the back slides out, leaving skid marks. Grass slows you down.
 - It's pseudo-3D: yellow-and-black ramps launch tanks into the air, where they can't steer, and they get bigger as they rise, with their shadow left on the ground. Hit a ramp faster to fly further.
-- Shells don't do damage. They knock the tank they hit sideways and pop it off the ground, so use them to push rivals off the track. 10 shells, refilled each lap.
+- Shells don't do damage. They knock the tank they hit sideways and pop it off the ground, so use them to push rivals off the track. Shells are unlimited.
 - The crowd lining the track is ghouls. Hit one with a shell or touch it with your tank and it bursts into a red stain and scattered limbs that stay for the rest of the race. The HUD keeps count.
+- **The Ghost Rider** haunts every race on a burning motorcycle, a bit slower than a tank at full speed. Get stuck behind him and he lashes back with a flaming chain that spins you round and kills your speed. One shell banishes him, but he rides again 3 s later. Overtake fast, or shoot first.
 - Cutting across the grass doesn't count as progress. A tank that stays far off the track for 2 s is put back on it.
 
 ## Math break

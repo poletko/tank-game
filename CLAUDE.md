@@ -60,6 +60,19 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 - Pathing: `compute_flow` is a Dijkstra distance field from all live tanks (bricks cost 6, steel and water are blocked), recomputed every 0.25 s. Walkers step to the downhill neighbour tile (`ghoul_step_target`) and claw bricks in the way. Ghosts ignore walls and are drawn above bushes.
 - In co-op, bullets skip tanks entirely (no friendly fire) and don't cancel each other. The `coopover` state shows the results.
 
+### Bosses
+- `Boss` objects live in `self.bosses`. `start_wave` sets `boss_pending` every `BOSS_EVERY` (3) waves, in `BOSS_KINDS`
+  order (knight, spider, snake, witch, then round again with `BOSS_HP_GROWTH`). `update_waves` spawns it first, and
+  a wave is only cleared once ghouls and bosses are gone. Every cleared wave restores all live tanks to full HP.
+- The user asked for these rules: bosses are slightly bigger (`BOSS_R`) and faster (`BOSS_SPEED`) than ghouls, and
+  their ranged attacks are **never diagonal**. `boss_aim` only fires along a row or column at a tank within
+  `BOSS_ALIGN` of it, and `BossShot`s move along exactly one axis. There's a `BOSS_WINDUP` with a dashed line first.
+- Knight: the sword flies out and back on the same line (`shot.back`); `boss.armed` blocks throwing until it returns.
+  Spider: `self.webs` maps tiles to time left; tanks on a web move at `WEB_SLOW`, and web balls set `Tank.stuck`.
+  Snake: `trail` keeps head positions every `SNAKE_TRAIL_STEP` px; `segs` (head first) are solid for tanks and
+  count for bullets, `targets()` and blasts (deduplicated per boss). Witch: flies like a ghost, lines up via
+  `witch_target`, and her cats arc over walls and go off through `explode(x, y, r, None)`, which hurts tanks.
+
 ## Special weapons
 - `Tank.special` is `'rocket'`, `'mortar'` or `'tesla'`. `special_recharge` is 0 for co-op packets (one shot, then
   the special is cleared) and `SPECIAL_RECHARGE` (7 s) for the versus catch-up weapon. `special_charge` counts down
@@ -78,6 +91,10 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   `valid()` rejects loops that leave the screen, have corners tighter than ~50 px radius, or come within
   `TRACK_W + 34` of themselves. `render()` bakes grass, curbs, asphalt, grid, ramps and tree shadows into
   `track.surface`; `track.decal()` paints skid marks, blood and limbs onto it. `track.mask` answers `onroad()`.
+- Tracks come from `outline_track`: `blob_outline` grows a random hole-free blob of cells on a 6-8 x 3-4 grid and
+  returns its outline corners, which go onto uneven grid lines, and `fillet_loop` rounds every corner into an exact
+  arc (as wide as the legs allow). Arcs need many points, or resampling sees kinks and `valid()` rejects the curve.
+  About 1 in 5 tries pass `valid()`. A track without room for a ramp is regenerated.
 - Physics live in `update_race_tanks`: velocity `vx, vy` split into forward and sideways parts in the heading frame.
   Sideways decays at `RACE_GRIP` (times `RACE_DRIFT_GRIP` when turning hard at speed), and that lag is the drift.
 - Pseudo-3D: `Tank.z`/`vz` are height. Anything at height z is drawn `z` px higher on screen, with its shadow left
@@ -89,6 +106,9 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 - Shells inherit the tank's velocity, never damage, and call `bump_tank`. Spectators are `Ghoul` objects in
   `self.spectators` (static, shadows baked into the track). `kill_spectator` paints `make_blood_splat` and launches
   `self.gibs` (limbs from `make_gib_sprites`) that become decals when they land.
+- `self.rider` (`Rider`) rides the centerline at `RIDER_SPEED` with a wandering lane offset (`update_rider`). A tank
+  within `RIDER_REACH` behind him, close to his line, gets lashed: speed cut, spun, popped up. One shell kills him
+  (`kill_rider`); he comes back at the same spot after `RIDER_RESPAWN`. Race shells are unlimited (`fire` skips ammo).
 - Race tanks draw from `Player.race_sprite` (pre-rotated in 5 degree steps). Rotating them live each frame dropped
   the race below 120 FPS. They're only rotated live while airborne, because of the scaling.
 
