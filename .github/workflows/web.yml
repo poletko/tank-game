@@ -1,0 +1,58 @@
+# Builds the browser version with pygbag on every push to main and publishes it on GitHub Pages:
+# https://poletko.github.io/tank-game/
+# One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+name: Web build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: web-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pygame==2.6.1 pygbag==0.9.3
+
+      - name: Smoke test
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python tests/smoke_test.py
+
+      # pygbag packs every file in the folder it's given, so it gets a folder with just the game as main.py
+      - name: Build with pygbag
+        run: |
+          mkdir -p web/tankarena
+          cp tanks.py web/tankarena/main.py
+          python -m pygbag --build --title "Tank Arena" web/tankarena
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/tankarena/build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

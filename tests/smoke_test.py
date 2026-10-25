@@ -358,4 +358,25 @@ if shots:
 for _ in range(120):
     g.update(1 / 60)
 assert g.quiz is None and g.quiz_clock == 0, "solving resets the 5 minute clock"
+
+# ---- browser drawing path: bushes baked into the ground still hide what's under them, decals included
+g.to_lobby()
+g.mode = "versus"
+g.start_match()
+g.arena.sway = False
+g.arena.ground = None
+bushes = [(c, r) for r in range(tanks.ROWS) for c in range(tanks.COLS) if g.arena.grid[r][c] == tanks.BUSH]
+assert bushes, "this map has no bushes to test"
+cx, cy = tanks.tile_center(*bushes[0])
+g.draw()
+bare = g.world.get_at((int(cx), int(cy)))
+t = g.players[0].tank
+t.x, t.y, t.invuln = cx, cy, 0
+g.arena.decal(g.arena.scorch[34], cx, cy)
+g.draw()
+hidden = g.world.get_at((int(cx), int(cy)))
+assert max(abs(a - b) for a, b in zip(hidden[:3], bare[:3])) < 24, "a tank or decal shows through a baked bush"
+g.arena.sway = True
+g.arena.ground = None
+print("browser drawing path ok")
 print("OK")

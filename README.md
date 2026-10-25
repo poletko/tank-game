@@ -1,8 +1,10 @@
 # Tank Arena
 
-A local multiplayer top-down tank shooter for Linux and Windows. Up to 6 players (any mix of controllers and the two keyboard slots) fight on one static screen.
+A local multiplayer top-down tank shooter for Linux, Windows and the browser. Up to 6 players (any mix of controllers and the two keyboard slots) fight on one static screen.
 
 ## Run
+**Browser:** open [poletko.github.io/tank-game](https://poletko.github.io/tank-game/) and click once to start (browsers only allow sound after a click). It runs best in Chrome or Edge. The first load takes a few seconds. Press F11 for fullscreen. Controllers work if you press a button on them after the page has loaded. The browser version is a bit lighter on effects (bushes don't sway) and may run slower than the desktop versions on older computers.
+
 **Windows:** download [TankArena.exe](https://github.com/poletko/tank-game/releases/latest/download/TankArena.exe) and double-click it. Nothing needs installing. It's built automatically from the latest code. The first time, Windows may say it "protected your PC" because the app isn't signed: click **More info**, then **Run anyway**.
 
 **Linux:**

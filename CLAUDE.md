@@ -1,6 +1,6 @@
 # Tank Arena: notes for editing
 
-A local multiplayer top-down tank shooter for Linux and Windows in a single Python file using pygame. There are no asset files: graphics and sounds are generated in code at startup.
+A local multiplayer top-down tank shooter for Linux, Windows and the browser in a single Python file using pygame. There are no asset files: graphics and sounds are generated in code at startup.
 
 ## Files
 - `tanks.py`: the whole game.
@@ -8,6 +8,8 @@ A local multiplayer top-down tank shooter for Linux and Windows in a single Pyth
 - `.github/workflows/windows.yml`: on every push to `main`, GitHub runs the smoke test on Windows, builds `TankArena.exe` with
   PyInstaller, runs `TankArena.exe --check` (`Game.self_check`: a few seconds of every mode), and replaces the
   `latest` release with it. If the build fails, the old release stays. Check the Actions tab after pushing.
+- `.github/workflows/web.yml`: on every push to `main`, builds the browser version with pygbag (the game copied in as
+  `main.py`) and deploys it to GitHub Pages: https://poletko.github.io/tank-game/
 - `tests/smoke_test.py`: headless test that runs the game with fake players and random inputs.
 - `README.md`: player-facing docs (controls, rules). Keep it in sync when controls or rules change.
 
@@ -100,10 +102,25 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   `up/down/left/right` buttons (derived from the stick and D-pad in `Pad.poll`), and keyboard digits come in as
   KEYDOWN events in `run()`.
 
+## Browser version (pygbag)
+- pygbag runs CPython and pygame-ce compiled to WebAssembly. `WEB` (`sys.platform == 'emscripten'`) gates the few
+  differences: no fullscreen at start, no quit or F11 handling (the browser owns those), no frame limit in
+  `clock.tick` (the browser paces frames), and `Arena.sway = False`.
+- `run()` and `main()` are async: the browser only gets to show a frame at `await asyncio.sleep(0)`. Never add a
+  blocking loop that runs across frames.
+- Speed in the browser, measured: plain Python is about 3x slower than desktop, opaque blits about the same, but
+  **alpha blits are 10-20x slower** (a full-screen alpha blit is ~60 ms, a full-screen `fill` ~4 ms). So: no
+  full-screen alpha layers (`dim()` uses a `BLEND_RGB_MULT` fill), no full-screen fill under a world that covers
+  the screen, static screens are cached as opaque surfaces (`lobby_cache`), sprites are pre-rotated
+  (`Player.rotated`), and without sway, bushes are baked into `arena.ground` and redrawn only near moving things.
+  Frame draw time in headless Chrome: versus ~7 ms, co-op ~10 ms, race ~12 ms. Keep it under ~12 ms.
+- To test locally: `pip install pygbag`, copy `tanks.py` to `somedir/main.py`, run `python -m pygbag somedir`
+  and open http://localhost:8000. Python output goes to the page's built-in terminal, not the JS console.
+
 ## Conventions
 - Keep it a single file with no dependencies beyond pygame and no external assets.
 - Match the existing style: plain classes, short comments only where something is non-obvious.
-- Must work on Linux and Windows: no shell calls, OS paths or platform-specific APIs. Controller support relies on SDL's GameController
+- Must work on Linux, Windows and in the browser: no shell calls, OS paths, threads, files or platform-specific APIs. Controller support relies on SDL's GameController
   mappings, so test new input features against `ctrl` pads first.
 - Performance budget: 120 FPS. Avoid per-frame full-screen alpha blits and per-tile alpha blits;
   bake them into cached layers instead. Measure with the smoke test's FPS line.

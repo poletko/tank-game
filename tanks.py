@@ -12,6 +12,7 @@ F11 toggles fullscreen, ESC returns to lobby / quits.
 Every 4 minutes of play a math question (Slovenian, end of 4th grade) appears at the next break between
 rounds or waves. Stick/D-pad up/down changes a digit, left/right picks the digit, A or START answers.
 """
+import asyncio
 import heapq
 import math
 import random
@@ -24,6 +25,8 @@ try:
     from pygame._sdl2 import controller as sdl_ctrl
 except Exception:  # very old pygame / missing SDL2 GameController support
     sdl_ctrl = None
+
+WEB = sys.platform == 'emscripten'   # running in a browser via pygbag
 
 W, H = 1280, 720
 T = 40                      # tile size
@@ -831,6 +834,9 @@ class Arena:
         self.shadow.fill((0, 0, 0, 85))
         self.vignette = make_vignette()
         self.ground = None
+        # browsers blit alpha sprites slowly, so there bushes don't sway: they're baked into `ground` and
+        # only redrawn where something passes under them
+        self.sway = not WEB
         self.scorch = {}
         for rad in (10, 34):
             s = pygame.Surface((rad * 2, rad * 2), pygame.SRCALPHA)
@@ -960,6 +966,8 @@ class Arena:
         self.static.blit(surf, rect)
         if self.ground:
             self.ground.blit(surf, rect)
+            if not self.sway:
+                self.draw_bushes(self.ground, 0, [rect.center], rect.w / 2)
 
     def scorch_mark(self, x, y, big=False):
         self.decal(self.scorch[34 if big else 10], x, y)
@@ -1013,6 +1021,8 @@ class Arena:
                 if g[r][c] == BRICK:
                     gr.blit(self.brick_tiles[self.brick_hp[(c, r)] - 1], (c * T, HUD + r * T))
         gr.blit(self.vignette, (0, HUD))
+        if not self.sway:   # after the vignette, like bushes drawn each frame
+            self.draw_bushes(gr, 0, None)
         self.ground = gr
 
     def draw_ground(self, dst, now):
@@ -1032,11 +1042,18 @@ class Arena:
                     if math.sin(now * 3 + c * 2.3 + r * 1.7) > 0.93:   # glint
                         pygame.draw.circle(dst, (200, 230, 255), (x + 12 + (c * 7) % 16, y + 10 + (r * 5) % 18), 2)
 
-    def draw_bushes(self, dst, now):
+    def draw_bushes(self, dst, now, near=None, reach=30):
+        """Draw bushes; without sway, only those within `reach` of a point in `near` (all of them when it's None)."""
+        if not self.sway and near is not None:
+            cells = {(int(x // T) + dc, int((y - HUD) // T) + dr) for x, y in near
+                     for dc in range(-1 - int(reach // T), 2 + int(reach // T))
+                     for dr in range(-1 - int(reach // T), 2 + int(reach // T))}
+        else:
+            cells = None
         for r in range(ROWS):
             for c in range(COLS):
-                if self.grid[r][c] == BUSH:
-                    sway = math.sin(now * 1.6 + c * 0.8 + r * 0.5) * 1.2
+                if self.grid[r][c] == BUSH and (cells is None or (c, r) in cells):
+                    sway = math.sin(now * 1.6 + c * 0.8 + r * 0.5) * 1.2 if self.sway else 0
                     dst.blit(self.bush_tiles[(c * 7 + r * 13) % 3], (c * T - 6 + sway, HUD + r * T - 6))
 
 
@@ -1264,6 +1281,7 @@ class Player:
         self.spawn = None
         self.tank = None
         self.race_cache = {}   # small race-mode sprites, pre-rotated in 5 degree steps
+        self.rot_cache = {}    # arena sprites, pre-rotated in 3 degree steps (rotating live is slow in browsers)
 
     def race_sprite(self, name, angle):
         step = round(angle / math.tau * 72) % 72
@@ -1271,6 +1289,14 @@ class Player:
         if img is None:
             src = self.sprites['bodies'][name] if isinstance(name, int) else self.sprites[name]
             img = self.race_cache[(name, step)] = pygame.transform.rotozoom(src, -step * 5, RACE_SCALE)
+        return img
+
+    def rotated(self, name, angle):
+        step = round(angle / math.tau * 120) % 120
+        img = self.rot_cache.get((name, step))
+        if img is None:
+            src = self.sprites['bodies'][name] if isinstance(name, int) else self.sprites[name]
+            img = self.rot_cache[(name, step)] = pygame.transform.rotozoom(src, -step * 3, 1)
         return img
 
 
@@ -1395,6 +1421,7 @@ class Game:
                 pygame.draw.circle(sp, col, (random.randint(10, 30), random.randint(10, 30)), random.randint(3, 8))
             self.splats[kind] = sp
         self.text_cache = {}
+        self.lobby_cache = None
         self.special_sprites = {k: make_special_sprites(k) for k in SPECIALS}
         self.missiles = []
         self.zaps = []           # [[(x, y), ...] chain points, time left] tesla bolts
@@ -1478,6 +1505,7 @@ class Game:
     def to_lobby(self):
         self.state = 'lobby'
         self.paused = False
+        self.lobby_cache = None     # the arena behind it changed during the match
         self.clear_entities()
         for p in self.players:
             p.score = 0
@@ -2768,16 +2796,14 @@ class Game:
         dst.blit(img, rect)
 
     def draw_tank(self, dst, t):
-        sp = t.player.sprites
+        pl = t.player
         white = t.flash > 0
-        deg = -math.degrees(t.angle)
-        body = sp['body_white'] if white else sp['bodies'][int(t.tread_phase / 1.2) % 4]
-        blit_center(dst, pygame.transform.rotozoom(sp['shadow'], deg, 1), t.x + 4, t.y + 5)
-        blit_center(dst, pygame.transform.rotozoom(body, deg, 1), t.x, t.y)
+        body = 'body_white' if white else int(t.tread_phase / 1.2) % 4
+        blit_center(dst, pl.rotated('shadow', t.angle), t.x + 4, t.y + 5)
+        blit_center(dst, pl.rotated(body, t.angle), t.x, t.y)
         rx = t.x - math.cos(t.turret) * t.recoil
         ry = t.y - math.sin(t.turret) * t.recoil
-        blit_center(dst, pygame.transform.rotozoom(sp['turret_white' if white else 'turret'],
-                                                   -math.degrees(t.turret), 1), rx, ry)
+        blit_center(dst, pl.rotated('turret_white' if white else 'turret', t.turret), rx, ry)
 
     def draw_particles(self, dst):
         glows = []
@@ -2961,7 +2987,7 @@ class Game:
         if self.shake > 0:
             amp = self.shake * 14
             ox, oy = random.uniform(-amp, amp), random.uniform(-amp, amp)
-        self.screen.fill((0, 0, 0))
+            self.screen.fill((0, 0, 0))     # only a shaken world leaves edges uncovered; full fills are slow in browsers
         self.screen.blit(w, (ox, oy))
 
     def draw_arena_world(self, w):
@@ -3006,7 +3032,15 @@ class Game:
                     self.text("EMPTY", self.font_tiny, (255, 90, 80), (t.x, t.y - 27), w, shadow=True)
             elif t.ammo <= 3:
                 self.text(str(t.ammo), self.font_tiny, (255, 215, 90), (t.x, t.y - 27), w, shadow=True)
-        self.arena.draw_bushes(w, self.now)
+        near = None
+        if not self.arena.sway:   # bushes are in the ground layer; redraw only those over something
+            near = [(t.x, t.y) for t in tanks] + [(g.x, g.y) for g in self.ghouls] + [(b.x, b.y) for b in self.bullets]
+            near += [(p[0], p[1]) for p in self.pickups] + [(m.x, m.y) for m in self.missiles]
+            if self.crate:
+                near.append(self.crate[:2])
+            if self.packet:
+                near.append(self.packet[:2])
+        self.arena.draw_bushes(w, self.now, near)
         for gh in self.ghouls:   # ghosts float above walls and bushes
             if gh.kind == 'ghost':
                 self.draw_ghoul(w, gh)
@@ -3182,41 +3216,56 @@ class Game:
             x += img.get_width() + 40
 
     def dim(self, alpha):
-        s = pygame.Surface((W, H), pygame.SRCALPHA)
-        s.fill((0, 0, 0, alpha))
-        self.screen.blit(s, (0, 0))
+        # same as blitting black at `alpha`, but a multiply fill skips the alpha blit (very slow in browsers)
+        k = 255 - alpha
+        self.screen.fill((k, k, k), special_flags=pygame.BLEND_RGB_MULT)
 
     def draw_lobby(self):
-        self.arena.draw_ground(self.screen, self.now)
-        self.arena.draw_bushes(self.screen, self.now)
+        # everything but the spinning tanks and the blinking prompts is drawn once into an opaque cache:
+        # browsers blit text and other alpha surfaces very slowly
+        bw, bh, gap = 184, 220, 15
+        x0 = (W - (MAX_PLAYERS * bw + (MAX_PLAYERS - 1) * gap)) // 2
+        by = 270
+        joined = {p.idx: p for p in self.players}
+        n_pads = sum(1 for p in self.pads.values() if p.kind in ('ctrl', 'joy'))
+        labels = tuple((i, self.pads[p.pad_id].label if p.pad_id in self.pads else "?") for i, p in sorted(joined.items()))
+        key = (self.mode, labels, n_pads)
+        if self.lobby_cache is None or self.lobby_cache[0] != key:
+            self.lobby_cache = (key, self.render_lobby(key, joined, n_pads, x0, by, bw, bh, gap))
+        self.screen.blit(self.lobby_cache[1], (0, 0))
+        for i in range(MAX_PLAYERS):
+            x = x0 + i * (bw + gap)
+            p = joined.get(i)
+            if p:
+                ang = self.now * 1.5 + i
+                body = pygame.transform.rotozoom(p.sprites['body'], -math.degrees(ang), 1.6)
+                tur = pygame.transform.rotozoom(p.sprites['turret'], -math.degrees(ang), 1.6)
+                blit_center(self.screen, body, x + bw // 2, by + 115)
+                blit_center(self.screen, tur, x + bw // 2, by + 115)
+            elif int(self.now * 2) % 2:
+                self.text("Press A to join", self.font_hud, (170, 170, 175), (x + bw // 2, by + 120), shadow=False)
+
+    def render_lobby(self, key, joined, n_pads, x0, by, bw, bh, gap):
+        bg = pygame.Surface((W, H)).convert()
+        self.arena.draw_ground(bg, 0)
+        self.arena.draw_bushes(bg, 0)
+        screen, self.screen = self.screen, bg     # draw with the usual helpers, but into the cache
         self.dim(170)
         self.text("TANK ARENA", self.font_big, (240, 220, 120), (W // 2, 130))
         self.text("Left stick drive   •   Right stick aim   •   RT / RB / A fire   •   LT / LB / X special", self.font_small, (200, 200, 200), (W // 2, 200))
         ammo = "refilled every lap" if self.mode == 'race' else "grab the ammo crates to reload"
         self.text(f"{MAX_AMMO} shells per tank - {ammo}", self.font_hud, (230, 200, 110), (W // 2, 236))
-
-        bw, bh, gap = 184, 220, 15
-        x0 = (W - (MAX_PLAYERS * bw + (MAX_PLAYERS - 1) * gap)) // 2
-        by = 270
+        labels = dict(key[1])
         for i in range(MAX_PLAYERS):
             x = x0 + i * (bw + gap)
-            p = next((pl for pl in self.players if pl.idx == i), None)
+            p = joined.get(i)
             color = PLAYER_COLORS[i][0]
             rect = pygame.Rect(x, by, bw, bh)
-            pygame.draw.rect(self.screen, (30, 32, 36), rect, border_radius=12)
-            pygame.draw.rect(self.screen, color if p else (70, 72, 78), rect, 3, border_radius=12)
+            pygame.draw.rect(bg, (30, 32, 36), rect, border_radius=12)
+            pygame.draw.rect(bg, color if p else (70, 72, 78), rect, 3, border_radius=12)
             self.text(f"P{i + 1}", self.font_med, color if p else (110, 110, 115), (rect.centerx, by + 35))
             if p:
-                ang = self.now * 1.5 + i
-                body = pygame.transform.rotozoom(p.sprites['body'], -math.degrees(ang), 1.6)
-                tur = pygame.transform.rotozoom(p.sprites['turret'], -math.degrees(ang), 1.6)
-                blit_center(self.screen, body, rect.centerx, by + 115)
-                blit_center(self.screen, tur, rect.centerx, by + 115)
-                pad = self.pads.get(p.pad_id)
-                self.text(pad.label if pad else "?", self.font_tiny, (200, 200, 200), (rect.centerx, by + 190), shadow=False)
-            else:
-                if int(self.now * 2) % 2:
-                    self.text("Press A to join", self.font_hud, (170, 170, 175), (rect.centerx, by + 120), shadow=False)
+                self.text(labels[i], self.font_tiny, (200, 200, 200), (rect.centerx, by + 190), shadow=False)
 
         if self.mode == 'versus':
             self.text("MODE:  VERSUS  -  last tank standing", self.font_small, (240, 220, 120), (W // 2, 522))
@@ -3225,18 +3274,20 @@ class Game:
         else:
             self.text("MODE:  RACE  -  jumps, drifts, and shells that only bump", self.font_small, (120, 210, 255), (W // 2, 522))
         self.text("Y / TAB to switch mode", self.font_tiny, (170, 170, 175), (W // 2, 548), shadow=False)
-        n_pads = sum(1 for p in self.pads.values() if p.kind in ('ctrl', 'joy'))
         self.text(f"{n_pads} controller{'s' if n_pads != 1 else ''} connected", self.font_tiny, (150, 150, 155), (W // 2, 568), shadow=False)
-        if self.players:
-            msg = ("Press START to begin" if len(self.players) > 1 or self.mode != 'versus'
+        if joined:
+            msg = ("Press START to begin" if len(joined) > 1 or self.mode != 'versus'
                    else "Press START for solo practice (2+ players for a match)")
             self.text(msg, self.font_small, (255, 255, 255), (W // 2, 590))
         self.text("Keyboard P1: WASD drive, Q/E aim, SPACE join+fire, F special, X leave   •   P2: arrows, , . aim, R-CTRL join+fire, / special, DEL leave   •   ENTER start",
                   self.font_tiny, (150, 150, 155), (W // 2, 630), shadow=False)
         goal = {'versus': f"First to {WIN_SCORE} round wins", 'coop': "Wave N brings N ghouls",
                 'race': f"{RACE_LAPS} laps, first to {RACE_WIN_SCORE} race wins"}[self.mode]
-        self.text(f"{goal}   •   B leave   •   F11 fullscreen   •   ESC quit",
+        quit_hint = "" if WEB else "   •   ESC quit"
+        self.text(f"{goal}   •   B leave   •   F11 fullscreen{quit_hint}",
                   self.font_hud, (150, 150, 155), (W // 2, 660), shadow=False)
+        self.screen = screen
+        return bg
 
     def draw(self):
         if self.state == 'lobby':
@@ -3262,11 +3313,12 @@ class Game:
         self.quiz = Quiz()
         self.draw()
 
-    def run(self):
+    async def run(self):
         added = {pygame.JOYDEVICEADDED, getattr(pygame, 'CONTROLLERDEVICEADDED', -1)}
         removed = {pygame.JOYDEVICEREMOVED, getattr(pygame, 'CONTROLLERDEVICEREMOVED', -1)}
         while True:
-            dt = min(self.clock.tick(FPS) / 1000.0, 1 / 30)
+            # in a browser the frame rate comes from the display refresh; ticking with a limit would wait a second frame
+            dt = min(self.clock.tick(0 if WEB else FPS) / 1000.0, 1 / 30)
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     return
@@ -3276,7 +3328,8 @@ class Game:
                     self.remove_pad(e.instance_id)
                 elif e.type == pygame.KEYDOWN:
                     if e.key == pygame.K_F11:
-                        pygame.display.toggle_fullscreen()
+                        if not WEB:     # in a browser, F11 already makes the page fullscreen
+                            pygame.display.toggle_fullscreen()
                     elif self.quiz and len(e.unicode) == 1 and e.unicode in "0123456789":   # top row and keypad
                         self.quiz.type_digit(int(e.unicode))
                     elif self.quiz and e.key == pygame.K_BACKSPACE:
@@ -3285,7 +3338,8 @@ class Game:
                         self.toggle_mode()
                     elif e.key == pygame.K_ESCAPE:
                         if self.state == 'lobby':
-                            return
+                            if not WEB:     # a browser tab can't be quit
+                                return
                         self.to_lobby()
             keys = pygame.key.get_pressed()
             for pad in list(self.pads.values()):
@@ -3293,20 +3347,21 @@ class Game:
             self.update(dt)
             self.draw()
             pygame.display.flip()
+            await asyncio.sleep(0)  # the browser only gets to run (and show the frame) here
 
 
-def main():
+async def main():
     pygame.mixer.pre_init(22050, -16, 2, 512)
     pygame.init()
     if sdl_ctrl:
         sdl_ctrl.init()
-    game = Game(fullscreen='--windowed' not in sys.argv)
+    game = Game(fullscreen='--windowed' not in sys.argv and not WEB)
     if '--check' in sys.argv:   # the Windows build runs this to prove the bundled .exe starts
         game.self_check()
     else:
-        game.run()
+        await game.run()
     pygame.quit()
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
