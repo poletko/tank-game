@@ -15,13 +15,14 @@ Needs Python 3 and pygame (`sudo apt install python3-pygame`).
 | Left stick / D-pad | drive |
 | Right stick | aim turret |
 | RT / RB / A | fire |
+| LT / LB / X | special weapon (when you have one) |
 | START | start match / pause |
 | B | leave lobby; in pause: quit to lobby |
 | BACK | in pause: quit to lobby |
 
 Two players can share the keyboard:
-- **P1:** WASD drive, Q/E turret, Space join/fire, X leave
-- **P2:** arrows drive, `,` `.` turret, Right Ctrl join/fire, Delete leave
+- **P1:** WASD drive, Q/E turret, Space join/fire, F special weapon, X leave
+- **P2:** arrows drive, `,` `.` turret, Right Ctrl join/fire, `/` special weapon, Delete leave
 - **Both:** Enter starts or pauses.
 
 F11 toggles fullscreen. ESC returns to the lobby, or quits from the lobby.
@@ -29,8 +30,9 @@ F11 toggles fullscreen. ESC returns to the lobby, or quits from the lobby.
 ## Rules
 - Each tank has 3 HP. The last tank standing wins the round, and the first to 5 round wins takes the match. With 5-6 players the extra tanks spawn at the middle of the left and right edges.
 - Bricks break after 2 hits. Shells bounce once off steel, so they can hit you on the rebound. Water blocks tanks but not shells. Bushes hide tanks.
-- Each tank carries 10 shells. An ammo crate appears at a random spot for 7 s (it blinks near the end, and a ring shows the time left). Driving over it refills you to 10. Once it's picked up or gone, the next one appears 10 s later.
+- Each tank carries 10 shells. An ammo crate appears at a random spot for 7 s (it blinks near the end, and a ring shows the time left). Driving over it refills you to 10. Once it's picked up or gone, the next one appears 9 s later.
 - Each round gets a new random map with 4-way symmetry.
+- Catch-up weapon: whoever is in last place (lowest score, once someone is ahead) gets a random special weapon for the round, fired with LT / LB / X. It recharges 7 s after each use.
 - Controllers can be plugged in at any time. If one disconnects mid-match, press A on any free pad to take over that player.
 
 ## Co-op mode
@@ -40,7 +42,14 @@ Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VER
 - Ghouls move at 60% of tank speed and chase the closest tank. Walkers go around walls and claw through bricks if they have to. Ghosts float straight through walls.
 - A ghoul's touch costs a tank 1 HP. Tanks have 5 HP in co-op, and there's no friendly fire.
 - Ammo refills at the start of each wave, crates still appear, and killed ghouls sometimes drop a +3 ammo box.
+- When only one tank is left standing (with 2+ players), special weapon packets start appearing for it. Each packet gives one shot of a special weapon, and a new one shows up a few seconds after it's used or picked up.
 - Fallen tanks come back at the next wave. When every tank is down the game ends and shows the wave you reached and each player's kills.
+
+## Special weapons
+Fired with LT / LB / X (keyboard: F or `/`). An icon next to your tank shows the weapon and its recharge.
+- **Rocket:** flies fast in a straight line and explodes on the first wall, ghoul or tank it hits. Everything in the blast takes 2 damage, and bricks in it are damaged too.
+- **Mortar:** hold the button and a red target circle walks out in front of your turret; let go to fire. The round arcs over walls and does 2 damage to everything in the circle.
+- **Tesla coil:** zaps the nearest target within range, then jumps to every ghoul (or tank) touching it, and on down the chain. Each one loses 1 health. If nothing is in range, the charge isn't used.
 
 ## Race mode
 The third mode in the lobby. Smaller, faster tanks race around a randomly generated circuit that fills the whole screen.
@@ -52,7 +61,7 @@ The third mode in the lobby. Smaller, faster tanks race around a randomly genera
 - Cutting across the grass doesn't count as progress. A tank that stays far off the track for 2 s is put back on it.
 
 ## Math break
-After every 5 minutes of play, a math question appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian: adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems.
+After every 4 minutes of play, a math question appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian: adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems.
 - Any player can answer. The answer goes into five digit boxes: stick or D-pad **up/down** changes the selected digit, **left/right** moves between digits, and **A** or **START** submits. On the keyboard you can also type the digits, use Backspace, and press Enter.
 - The game stays frozen until the answer is right. After 3 wrong tries the solution is shown and a new question is asked.
 

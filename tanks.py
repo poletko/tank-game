@@ -2,13 +2,14 @@
 # Public domain (The Unlicense, see LICENSE): do whatever you want with this.
 """Tank Arena - local multiplayer top-down tank shooter (Linux, Xbox controllers).
 
-Left stick: drive   Right stick: aim turret   RT / RB / A: fire
+Left stick: drive   Right stick: aim turret   RT / RB / A: fire   LT / LB / X: special weapon
 START: begin match / pause   B: leave lobby   BACK (in pause): quit to lobby
 Y / TAB in the lobby cycles VERSUS, CO-OP (tanks vs waves of undead) and RACE.
-Keyboard (two players): P1 WASD + Q/E turret + SPACE fire + X leave, P2 arrows + ,/. turret + RCTRL fire + DELETE leave
+Keyboard (two players): P1 WASD + Q/E turret + SPACE fire + F special + X leave,
+P2 arrows + ,/. turret + RCTRL fire + / special + DELETE leave
 ENTER starts / pauses. Up to 6 players in total.
 F11 toggles fullscreen, ESC returns to lobby / quits.
-Every 5 minutes of play a math question (Slovenian, end of 4th grade) appears at the next break between
+Every 4 minutes of play a math question (Slovenian, end of 4th grade) appears at the next break between
 rounds or waves. Stick/D-pad up/down changes a digit, left/right picks the digit, A or START answers.
 """
 import heapq
@@ -50,7 +51,7 @@ BRICK_HP = 2
 WIN_SCORE = 5
 MAX_AMMO = 10
 CRATE_LIFE = 7.0
-CRATE_RESPAWN = 10.0
+CRATE_RESPAWN = 9.0
 CRATE_R = 15
 DEADZONE = 0.25
 
@@ -70,6 +71,23 @@ WAVE_BREAK = 4.0
 AMMO_DROP_CHANCE = 0.35
 AMMO_DROP = 3
 GHOUL_COLORS = {'mummy': (215, 200, 155), 'zombie': (100, 160, 70), 'vampire': (160, 25, 40), 'ghost': (220, 230, 255)}
+
+# special weapons: lone co-op survivors find one-shot packets, the last-placed versus player gets a rechargeable one
+SPECIALS = ('rocket', 'mortar', 'tesla')
+SPECIAL_NAMES = {'rocket': "ROCKET", 'mortar': "MORTAR", 'tesla': "TESLA"}
+SPECIAL_COLORS = {'rocket': (255, 90, 60), 'mortar': (255, 170, 50), 'tesla': (110, 210, 255)}
+SPECIAL_RECHARGE = 7.0
+SPECIAL_PACKET_DELAY = 4.0  # co-op: seconds between packets while one tank is left
+SPECIAL_PACKET_LIFE = 12.0
+BLAST_DAMAGE = 2
+ROCKET_SPEED = 900
+ROCKET_RADIUS = 70
+MORTAR_MIN, MORTAR_MAX = 90, 520
+MORTAR_AIM_SPEED = 400      # how fast the target circle walks out while the button is held
+MORTAR_FLIGHT = 1.0
+MORTAR_RADIUS = 60
+TESLA_RANGE = 180
+TESLA_TOUCH = 10            # gap at which two targets count as touching
 
 # race mode
 RACE_SCALE = 0.55           # race tanks are drawn smaller so the track has room
@@ -99,7 +117,7 @@ ASPHALT = (66, 68, 74)
 ORDINALS = ('1st', '2nd', '3rd', '4th', '5th', '6th')
 
 # math break
-QUIZ_INTERVAL = 300.0       # seconds of play between questions
+QUIZ_INTERVAL = 240.0       # seconds of play between questions
 QUIZ_DIGITS = 5
 QUIZ_TRIES = 3              # wrong answers before the solution is shown and a new question asked
 MAX_PLAYERS = 6
@@ -118,9 +136,9 @@ SPAWNS = CORNER_SPAWNS + SIDE_SPAWNS
 
 KB_MAPS = {
     'kb1': dict(up=pygame.K_w, down=pygame.K_s, left=pygame.K_a, right=pygame.K_d,
-                ccw=pygame.K_q, cw=pygame.K_e, fire=pygame.K_SPACE, leave=pygame.K_x),
+                ccw=pygame.K_q, cw=pygame.K_e, fire=pygame.K_SPACE, fire2=pygame.K_f, leave=pygame.K_x),
     'kb2': dict(up=pygame.K_UP, down=pygame.K_DOWN, left=pygame.K_LEFT, right=pygame.K_RIGHT,
-                ccw=pygame.K_COMMA, cw=pygame.K_PERIOD, fire=pygame.K_RCTRL, leave=pygame.K_DELETE),
+                ccw=pygame.K_COMMA, cw=pygame.K_PERIOD, fire=pygame.K_RCTRL, fire2=pygame.K_SLASH, leave=pygame.K_DELETE),
 }
 FLOOR = (58, 60, 52)
 
@@ -345,6 +363,11 @@ class Sounds:
         self.snd['land'] = self.make(0.3, lambda t: n6() * 3 * e(-t * 14) + math.sin(tau * 55 * t) * e(-t * 12), 0.55)
         self.snd['jump'] = self.make(0.35, lambda t: n7() * 1.5 * math.sin(math.pi * t / 0.35) ** 2, 0.3)
         self.snd['cheer'] = self.make(1.4, lambda t: n4() * 3 * (0.7 + 0.3 * math.sin(t * 37)) * min(1, t * 6) * e(-t * 1.6), 0.35)
+        n8 = lp_noise(0.2)
+        self.snd['rocket'] = self.make(0.5, lambda t: n8() * 2.5 * min(1, t * 20) * e(-t * 5), 0.45)
+        self.snd['mortar'] = self.make(0.35, lambda t: n3() * 4 * e(-t * 10) + math.sin(tau * 70 * t) * e(-t * 9), 0.55)
+        self.snd['zap'] = self.make(0.4, lambda t: ((1 if math.sin(tau * 95 * t) > 0 else -1) * 0.4 + n5() * 1.2)
+                                     * (0.6 + 0.4 * math.sin(t * 160)) * e(-t * 6), 0.35)
         self.snd['crate'] = self.make(0.6, lambda t: (math.sin(tau * 880 * t) + 0.5 * math.sin(tau * 1320 * t)) * e(-t * 6), 0.2)
 
     def make(self, dur, fn, vol=0.5):
@@ -394,6 +417,9 @@ class Pad:
             if (ax(pygame.CONTROLLER_AXIS_TRIGGERRIGHT) > 0.35 or bt(pygame.CONTROLLER_BUTTON_RIGHTSHOULDER)
                     or bt(pygame.CONTROLLER_BUTTON_A)):
                 held.add('fire')
+            if (ax(pygame.CONTROLLER_AXIS_TRIGGERLEFT) > 0.35 or bt(pygame.CONTROLLER_BUTTON_LEFTSHOULDER)
+                    or bt(pygame.CONTROLLER_BUTTON_X)):
+                held.add('fire2')
             for name, b in (('a', pygame.CONTROLLER_BUTTON_A), ('b', pygame.CONTROLLER_BUTTON_B), ('y', pygame.CONTROLLER_BUTTON_Y),
                             ('start', pygame.CONTROLLER_BUTTON_START), ('back', pygame.CONTROLLER_BUTTON_BACK)):
                 if bt(b):
@@ -414,6 +440,8 @@ class Pad:
                 aim = math.atan2(ry, rx)
             if (na > 5 and ax(5) > 0.0) or bt(5) or bt(0):
                 held.add('fire')
+            if (na > 2 and ax(2) > 0.0) or bt(4) or bt(2):
+                held.add('fire2')
             for name, b in (('a', 0), ('b', 1), ('y', 3), ('start', 7), ('back', 6)):
                 if bt(b):
                     held.add(name)
@@ -424,6 +452,8 @@ class Pad:
             rot = keys[k['cw']] - keys[k['ccw']]
             if keys[k['fire']]:
                 held |= {'fire', 'a'}
+            if keys[k['fire2']]:
+                held.add('fire2')
             if keys[k['leave']]:
                 held |= {'b', 'back'}
             if keys[pygame.K_RETURN] or keys[pygame.K_KP_ENTER]:
@@ -616,6 +646,40 @@ def make_crate_sprite():
         pygame.draw.circle(s, (205, 110, 60), (x, 12 * S), 2 * S)
         pygame.draw.rect(s, (255, 230, 140), (x - 1.5 * S, 13 * S, S, 8 * S))
     return pygame.transform.smoothscale(s, (30, 30)).convert_alpha()
+
+
+def draw_special_icon(s, kind, cx, cy, k):
+    """Weapon symbol centred on (cx, cy), k = pixels per unit."""
+    col = SPECIAL_COLORS[kind]
+    if kind == 'rocket':
+        pygame.draw.polygon(s, (230, 230, 235), [(cx - 6 * k, cy - 2 * k), (cx + 4 * k, cy - 2 * k), (cx + 8 * k, cy),
+                                                 (cx + 4 * k, cy + 2 * k), (cx - 6 * k, cy + 2 * k)])
+        pygame.draw.polygon(s, col, [(cx - 6 * k, cy - 2 * k), (cx - 9 * k, cy - 5 * k), (cx - 3 * k, cy - 2 * k)])
+        pygame.draw.polygon(s, col, [(cx - 6 * k, cy + 2 * k), (cx - 9 * k, cy + 5 * k), (cx - 3 * k, cy + 2 * k)])
+        pygame.draw.polygon(s, col, [(cx + 4 * k, cy - 2 * k), (cx + 8 * k, cy), (cx + 4 * k, cy + 2 * k)])
+    elif kind == 'mortar':
+        pygame.draw.circle(s, col, (cx, cy), 7 * k, max(1, int(1.6 * k)))
+        pygame.draw.circle(s, col, (cx, cy), 2 * k)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            pygame.draw.line(s, col, (cx + dx * 4 * k, cy + dy * 4 * k), (cx + dx * 9 * k, cy + dy * 9 * k), max(1, int(1.6 * k)))
+    else:
+        pygame.draw.polygon(s, col, [(cx + 2 * k, cy - 8 * k), (cx - 5 * k, cy + 1 * k), (cx, cy + 1 * k),
+                                     (cx - 2 * k, cy + 8 * k), (cx + 5 * k, cy - 1 * k), (cx, cy - 1 * k)])
+
+
+def make_special_sprites(kind):
+    """(packet box, small icon) for a special weapon."""
+    S = SS
+    s = pygame.Surface((30 * S, 30 * S), pygame.SRCALPHA)
+    col = SPECIAL_COLORS[kind]
+    pygame.draw.rect(s, (40, 42, 50), (0, 0, 30 * S, 30 * S), border_radius=5 * S)
+    pygame.draw.rect(s, (75, 80, 92), (2 * S, 2 * S, 26 * S, 26 * S), border_radius=4 * S)
+    pygame.draw.rect(s, col, (2 * S, 2 * S, 26 * S, 26 * S), S, border_radius=4 * S)
+    draw_special_icon(s, kind, 15 * S, 15 * S, 1.3 * S)
+    box = pygame.transform.smoothscale(s, (30, 30)).convert_alpha()
+    i = pygame.Surface((20 * S, 20 * S), pygame.SRCALPHA)
+    draw_special_icon(i, kind, 10 * S, 10 * S, S)
+    return box, pygame.transform.smoothscale(i, (20, 20)).convert_alpha()
 
 
 def make_brick_tile(cracked):
@@ -1226,6 +1290,10 @@ class Tank:
         self.ammo = MAX_AMMO
         self.max_hp = TANK_HP
         self.invuln = 0.0
+        self.special = None        # 'rocket' / 'mortar' / 'tesla'
+        self.special_recharge = 0.0   # 0 = one shot, else seconds to recharge after use
+        self.special_charge = 0.0     # seconds until ready
+        self.mortar_aim = None     # target distance while the mortar button is held
         # race mode
         self.vx = self.vy = 0.0
         self.z = self.vz = 0.0     # height above the ground, for ramps and jumps
@@ -1251,6 +1319,22 @@ class Ghoul:
         self.emerge = GHOUL_EMERGE
         self.phase = random.uniform(0, math.tau)
         self.face = 1
+        self.dead = False
+
+
+class Missile:
+    """Rocket (flies straight) or mortar round (lobbed over walls to a target point)."""
+
+    def __init__(self, kind, owner, x, y, a, dist=0.0):
+        self.kind, self.owner = kind, owner
+        self.x, self.y = self.sx, self.sy = x, y
+        self.a = a
+        self.vx, self.vy = math.cos(a) * ROCKET_SPEED, math.sin(a) * ROCKET_SPEED
+        self.tx, self.ty = x + math.cos(a) * dist, y + math.sin(a) * dist
+        self.t = 0.0
+        self.dur = MORTAR_FLIGHT * (0.6 + 0.4 * dist / MORTAR_MAX)
+        self.peak = 60 + dist * 0.3
+        self.z = 0.0
         self.dead = False
 
 
@@ -1311,6 +1395,11 @@ class Game:
                 pygame.draw.circle(sp, col, (random.randint(10, 30), random.randint(10, 30)), random.randint(3, 8))
             self.splats[kind] = sp
         self.text_cache = {}
+        self.special_sprites = {k: make_special_sprites(k) for k in SPECIALS}
+        self.missiles = []
+        self.zaps = []           # [[(x, y), ...] chain points, time left] tesla bolts
+        self.packet = None       # [x, y, kind, life, age] co-op special weapon packet
+        self.packet_timer = 0.0
         self.quiz = None
         self.quiz_clock = 0.0    # seconds played since the last math question
         self.quiz_msg = None     # [text, color]
@@ -1377,10 +1466,12 @@ class Game:
 
     def clear_entities(self):
         for lst in (self.bullets, self.particles, self.rings, self.flashes, self.texts, self.wrecks,
-                    self.ghouls, self.pickups, self.spectators, self.gibs):
+                    self.ghouls, self.pickups, self.spectators, self.gibs, self.missiles, self.zaps):
             lst.clear()
         self.crate = None
         self.crate_timer = CRATE_RESPAWN
+        self.packet = None
+        self.packet_timer = 2.0
         self.flow = None
         self.banner = None
 
@@ -1427,6 +1518,13 @@ class Game:
             self.wave = 0
             self.wave_break = 0.5
             self.wave_to_spawn = 0
+        else:
+            low = min(p.score for p in self.players)
+            if any(p.score > low for p in self.players):   # nobody is "last" while everyone is level
+                for p in self.players:
+                    if p.score == low:
+                        p.tank.special = random.choice(SPECIALS)
+                        p.tank.special_recharge = SPECIAL_RECHARGE
         self.start_countdown()
 
     def new_race(self):
@@ -1519,6 +1617,7 @@ class Game:
         else:
             self.update_tanks(dt)
             self.update_bullets(dt)
+            self.update_missiles(dt)
         self.update_effects(dt)
 
         if self.banner:
@@ -1532,6 +1631,7 @@ class Game:
             self.update_waves(dt)
             self.update_ghouls(dt)
             self.update_pickups(dt)
+            self.update_packet(dt)
             if not any(p.tank and p.tank.alive for p in self.players) and self.ending is None:
                 self.ending = 1.5
             if self.ending is not None:
@@ -1672,6 +1772,9 @@ class Game:
                     self.sounds.play('empty')
                 elif sum(1 for b in self.bullets if b.owner is t) < MAX_BULLETS:
                     self.fire(t)
+            t.special_charge -= dt
+            if t.special and pad:
+                self.special_input(t, pad, dt, can_act)
             if t.hp == 1:
                 t.smoke -= dt
                 if t.smoke <= 0:
@@ -1728,11 +1831,9 @@ class Game:
         if self.crate is None:
             self.crate_timer -= dt
             if self.crate_timer <= 0:
-                tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
-                spots = [tile_center(c, r) for r in range(ROWS) for c in range(COLS) if self.arena.grid[r][c] == EMPTY]
-                far = [s for s in spots if all(math.hypot(s[0] - t.x, s[1] - t.y) > 3 * T for t in tanks)]
-                if far or spots:
-                    x, y = random.choice(far or spots)
+                spot = self.free_spot()
+                if spot:
+                    x, y = spot
                     self.crate = [x, y, CRATE_LIFE, 0.0]
                     self.rings.append([x, y, 0.0, 0.4])
                     self.sounds.play('crate')
@@ -1757,6 +1858,184 @@ class Game:
                 self.crate = None
         if self.crate is None:
             self.crate_timer = CRATE_RESPAWN
+
+    def free_spot(self, away=3 * T):
+        tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        spots = [tile_center(c, r) for r in range(ROWS) for c in range(COLS) if self.arena.grid[r][c] == EMPTY]
+        far = [s for s in spots if all(math.hypot(s[0] - t.x, s[1] - t.y) > away for t in tanks)]
+        return random.choice(far or spots) if spots else None
+
+    # ---- special weapons
+
+    def special_input(self, t, pad, dt, can_act):
+        ready = can_act and t.special_charge <= 0
+        if t.special == 'mortar':
+            # hold to walk the target circle out, release to fire
+            if 'fire2' in pad.held and ready:
+                t.mortar_aim = MORTAR_MIN if t.mortar_aim is None else min(MORTAR_MAX, t.mortar_aim + MORTAR_AIM_SPEED * dt)
+            elif t.mortar_aim is not None:
+                if can_act:
+                    self.fire_special(t)
+                t.mortar_aim = None
+        elif 'fire2' in pad.pressed and ready:
+            self.fire_special(t)
+
+    def fire_special(self, t):
+        kind = t.special
+        mx, my = t.x + math.cos(t.turret) * 25, t.y + math.sin(t.turret) * 25
+        if kind == 'tesla':
+            if not self.tesla(t):
+                self.sounds.play('empty')
+                return   # nothing in range: keep the charge
+        elif kind == 'rocket':
+            self.missiles.append(Missile('rocket', t, mx, my, t.turret))
+            self.sounds.play('rocket')
+        else:
+            tx = clamp(t.x + math.cos(t.turret) * t.mortar_aim, 0, W)
+            ty = clamp(t.y + math.sin(t.turret) * t.mortar_aim, HUD, H)
+            self.missiles.append(Missile('mortar', t, t.x, t.y, t.turret, math.hypot(tx - t.x, ty - t.y)))
+            self.sounds.play('mortar')
+        t.recoil = 7.0
+        for _ in range(10):
+            a = t.turret + random.uniform(-0.6, 0.6)
+            sp = random.uniform(60, 260)
+            self.particles.append([mx, my, math.cos(a) * sp, math.sin(a) * sp, 0.18, 0.18, 'fire', random.uniform(4, 7)])
+        self.rumble(t.player, 0.7, 0.7, 200)
+        if t.special_recharge:
+            t.special_charge = t.special_recharge
+        else:
+            t.special = None
+
+    def targets(self, owner):
+        """What specials can hurt: ghouls in co-op, enemy tanks in versus."""
+        if self.mode == 'coop':
+            return [(g.x, g.y, GHOUL_R, g) for g in self.ghouls if not g.dead and g.emerge <= 0]
+        return [(t.x, t.y, TANK_R, t) for t in (p.tank for p in self.players if p.tank and p.tank.alive) if t is not owner]
+
+    def damage_target(self, obj, owner, x, y, n):
+        for _ in range(n):
+            if isinstance(obj, Ghoul):
+                if obj.dead:
+                    return
+                self.hit_ghoul(obj, Bullet(owner, obj.x, obj.y, math.atan2(obj.y - y, obj.x - x)))
+            else:
+                if not obj.alive:
+                    return
+                obj.invuln = 0.0
+                self.hit_tank(obj, obj.x, obj.y)
+
+    def tesla(self, t):
+        """Zap the nearest target in range, then everything touching it, and so on down the chain."""
+        tg = self.targets(t)
+        seeds = [o for o in tg if math.hypot(o[0] - t.x, o[1] - t.y) < TESLA_RANGE]
+        if not seeds:
+            return False
+        first = min(seeds, key=lambda o: math.hypot(o[0] - t.x, o[1] - t.y))
+        hit, links, queue = [first], [((t.x, t.y), first)], [first]
+        for o in tg:   # anything touching the tank itself is zapped too
+            if o is not first and math.hypot(o[0] - t.x, o[1] - t.y) < o[2] + TANK_R + TESLA_TOUCH:
+                hit.append(o)
+                links.append(((t.x, t.y), o))
+                queue.append(o)
+        while queue:
+            a = queue.pop()
+            for b in tg:
+                if b not in hit and math.hypot(a[0] - b[0], a[1] - b[1]) < a[2] + b[2] + TESLA_TOUCH:
+                    hit.append(b)
+                    links.append(((a[0], a[1]), b))
+                    queue.append(b)
+        for start, o in links:
+            self.zaps.append([start, (o[0], o[1]), 0.35])
+            self.flashes.append([o[0], o[1], 0.0, 0.25, 40])
+        for o in hit:
+            self.damage_target(o[3], t, t.x, t.y, 1)
+        self.sounds.play('zap')
+        self.shake = max(self.shake, 0.15)
+        return True
+
+    def explode(self, x, y, radius, owner):
+        for ox, oy, r, obj in self.targets(owner):
+            if math.hypot(ox - x, oy - y) < radius + r:
+                self.damage_target(obj, owner, x, y, BLAST_DAMAGE)
+        for r in range(int((y - radius - HUD) // T), int((y + radius - HUD) // T) + 1):
+            for c in range(int((x - radius) // T), int((x + radius) // T) + 1):
+                if 0 <= c < COLS and 0 <= r < ROWS and self.arena.grid[r][c] == BRICK:
+                    bx, by = tile_center(c, r)
+                    if math.hypot(bx - x, by - y) < radius:
+                        self.damage_brick(c, r)
+        self.arena.scorch_mark(x, y, big=True)
+        for _ in range(30):
+            a = random.uniform(0, math.tau)
+            s = random.uniform(40, 260)
+            life = random.uniform(0.3, 0.7)
+            self.particles.append([x, y, math.cos(a) * s, math.sin(a) * s, life, life, 'fire', random.uniform(6, 12)])
+        for _ in range(12):
+            a = random.uniform(0, math.tau)
+            self.particles.append([x, y, math.cos(a) * 30, math.sin(a) * 30, 1.3, 1.3, 'smoke', random.uniform(7, 11)])
+        self.rings.append([x, y, 0.0, 0.4])
+        self.flashes.append([x, y, 0.0, 0.45, radius * 2])
+        self.shake = max(self.shake, 0.5)
+        self.sounds.play('explode')
+
+    def update_missiles(self, dt):
+        for m in self.missiles:
+            if m.kind == 'rocket':
+                steps = max(1, math.ceil(ROCKET_SPEED * dt / 6))
+                for _ in range(steps):
+                    nx, ny = m.x + m.vx * dt / steps, m.y + m.vy * dt / steps
+                    hit = self.arena.bullet_hit(nx, ny) or not (0 <= nx <= W and HUD <= ny <= H)
+                    hit = hit or any(math.hypot(ox - nx, oy - ny) < r + 4 for ox, oy, r, _ in self.targets(m.owner))
+                    if hit:
+                        self.explode(m.x, m.y, ROCKET_RADIUS, m.owner)
+                        m.dead = True
+                        break
+                    m.x, m.y = nx, ny
+                if not m.dead:
+                    self.particles.append([m.x - m.vx * 0.02, m.y - m.vy * 0.02, random.uniform(-20, 20), random.uniform(-20, 20),
+                                           0.5, 0.5, 'smoke', random.uniform(3, 5)])
+                    self.particles.append([m.x - m.vx * 0.012, m.y - m.vy * 0.012, 0, 0, 0.1, 0.1, 'fire', 5])
+            else:
+                m.t += dt
+                k = min(1.0, m.t / m.dur)
+                m.x = m.sx + (m.tx - m.sx) * k
+                m.y = m.sy + (m.ty - m.sy) * k
+                m.z = 4 * m.peak * k * (1 - k)
+                if k >= 1:
+                    self.explode(m.tx, m.ty, MORTAR_RADIUS, m.owner)
+                    m.dead = True
+        self.missiles = [m for m in self.missiles if not m.dead]
+        for z in self.zaps:
+            z[2] -= dt
+        self.zaps = [z for z in self.zaps if z[2] > 0]
+
+    def update_packet(self, dt):
+        """Co-op: while only one tank is left, special weapon packets keep turning up for it."""
+        alive = [p.tank for p in self.players if p.tank and p.tank.alive]
+        lone = len(self.players) > 1 and len(alive) == 1
+        if self.packet:
+            pk = self.packet
+            pk[3] -= dt
+            pk[4] += dt
+            for t in alive:
+                if math.hypot(t.x - pk[0], t.y - pk[1]) < TANK_R + CRATE_R:
+                    t.special, t.special_recharge, t.special_charge = pk[2], 0.0, 0.0
+                    self.texts.append([SPECIAL_NAMES[pk[2]] + "!", pk[0], pk[1] - 20, 0.0, SPECIAL_COLORS[pk[2]]])
+                    self.sparks(pk[0], pk[1], SPECIAL_COLORS[pk[2]], 18)
+                    self.sounds.play('pickup')
+                    self.rumble(t.player, 0.3, 0.7, 200)
+                    pk[3] = 0
+                    break
+            if pk[3] <= 0:
+                self.packet = None
+                self.packet_timer = SPECIAL_PACKET_DELAY
+        elif lone and not alive[0].special:
+            self.packet_timer -= dt
+            if self.packet_timer <= 0:
+                spot = self.free_spot()
+                if spot:
+                    self.packet = [spot[0], spot[1], random.choice(SPECIALS), SPECIAL_PACKET_LIFE, 0.0]
+                    self.rings.append([spot[0], spot[1], 0.0, 0.4])
+                    self.sounds.play('crate')
 
     def damage_brick(self, c, r):
         self.arena.brick_hp[(c, r)] -= 1
@@ -2623,6 +2902,55 @@ class Game:
             img.set_alpha(int(255 * (1 - t)))
             w.blit(img, img.get_rect(center=(round(x), round(y))))
 
+    def draw_specials(self, w, tanks):
+        for t in tanks:
+            if t.mortar_aim is not None:   # red target circle on the ground
+                tx = clamp(t.x + math.cos(t.turret) * t.mortar_aim, 0, W)
+                ty = clamp(t.y + math.sin(t.turret) * t.mortar_aim, HUD, H)
+                pulse = 2 * math.sin(self.now * 12)
+                pygame.draw.circle(w, (230, 40, 40), (tx, ty), MORTAR_RADIUS + pulse, 3)
+                pygame.draw.circle(w, (255, 90, 80), (tx, ty), 6, 2)
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    pygame.draw.line(w, (230, 40, 40), (tx + dx * 12, ty + dy * 12), (tx + dx * 24, ty + dy * 24), 2)
+                for i in range(1, 8):   # dotted path
+                    k = i / 8
+                    pygame.draw.circle(w, (255, 120, 110), (t.x + (tx - t.x) * k, t.y + (ty - t.y) * k - 4 * 30 * k * (1 - k)), 2)
+            if t.special:   # held weapon: icon with a recharge arc
+                ix, iy = t.x + 22, t.y - 22
+                pygame.draw.circle(w, (20, 22, 28), (ix, iy), 12)
+                icon = self.special_sprites[t.special][1]
+                if t.special_charge > 0:
+                    frac = 1 - t.special_charge / t.special_recharge
+                    pygame.draw.arc(w, (150, 150, 160), (ix - 12, iy - 12, 24, 24), math.pi / 2, math.pi / 2 + math.tau * frac, 2)
+                    icon = icon.copy()
+                    icon.set_alpha(90)
+                else:
+                    pygame.draw.circle(w, SPECIAL_COLORS[t.special], (ix, iy), 12, 2)
+                blit_center(w, icon, ix, iy)
+        for m in self.missiles:
+            if m.kind == 'rocket':
+                add_glow(w, (170, 80, 25), m.x, m.y, 30)
+                img = pygame.transform.rotozoom(self.special_sprites['rocket'][1], -math.degrees(m.a), 1.7)
+                blit_center(w, img, m.x, m.y)
+            else:
+                pygame.draw.circle(w, (230, 40, 40), (m.tx, m.ty), MORTAR_RADIUS * (1 - 0.3 * m.t / m.dur), 2)
+                sh = 4 + 4 * (1 - m.z / (m.peak + 1))
+                pygame.draw.ellipse(w, (20, 20, 20), (m.x - sh, m.y - sh / 2, sh * 2, sh))
+                pygame.draw.circle(w, (20, 20, 22), (m.x, m.y - m.z), 8 + m.z / 40)
+                pygame.draw.circle(w, (150, 150, 160), (m.x, m.y - m.z), 6 + m.z / 40)
+                pygame.draw.circle(w, (230, 230, 240), (m.x - 2, m.y - m.z - 2), 2 + m.z / 80)
+        for (x0, y0), (x1, y1), life in self.zaps:   # jagged bolts, re-randomised every frame so they crackle
+            d = math.hypot(x1 - x0, y1 - y0) or 1
+            nx, ny = -(y1 - y0) / d, (x1 - x0) / d
+            pts = [(x0, y0)]
+            for i in range(1, 8):
+                k, off = i / 8, random.uniform(-9, 9)
+                pts.append((x0 + (x1 - x0) * k + nx * off, y0 + (y1 - y0) * k + ny * off))
+            pts.append((x1, y1))
+            pygame.draw.lines(w, (90, 170, 255), False, pts, 5)
+            pygame.draw.lines(w, (230, 245, 255), False, pts, 2)
+            add_glow(w, (40, 80, 140), x1, y1, 26)
+
     def draw_world(self):
         w = self.world
         if self.mode == 'race':
@@ -2644,6 +2972,16 @@ class Game:
         for pk in self.pickups:
             if pk[2] > 2 or int(pk[2] * 8) % 2:
                 blit_center(w, pygame.transform.rotozoom(self.crate_sprite, math.sin(self.now * 3) * 8, 0.6), pk[0], pk[1])
+        if self.packet:
+            x, y, kind, life, age = self.packet
+            if life > 2 or int(life * 8) % 2:
+                col = SPECIAL_COLORS[kind]
+                add_glow(w, tuple(c // 2 for c in col), x, y, 36 + int(4 * math.sin(self.now * 6)))
+                blit_center(w, self.crate_shadow, x + 4, y + 5)
+                pop = min(1.0, age / 0.25)
+                blit_center(w, pygame.transform.rotozoom(self.special_sprites[kind][0], math.sin(self.now * 3) * 8,
+                                                         max(0.05, pop * (1.1 + 0.08 * math.sin(self.now * 7)))), x, y - 2)
+                pygame.draw.arc(w, col, (x - 24, y - 26, 48, 48), math.pi / 2, math.pi / 2 + math.tau * life / SPECIAL_PACKET_LIFE, 2)
         for gh in self.ghouls:
             if gh.kind != 'ghost':
                 self.draw_ghoul(w, gh)
@@ -2658,6 +2996,7 @@ class Game:
             pygame.draw.circle(w, col, (b.x, b.y), BULLET_R + 1)
             pygame.draw.circle(w, (255, 255, 255), (b.x, b.y), 2.5)
         self.draw_particles(w)
+        self.draw_specials(w, tanks)
         for x, y, t, mt, rad in self.flashes:
             k = 1 - t / mt
             add_glow(w, (int(255 * k), int(200 * k), int(120 * k)), x, y, rad)
@@ -2711,6 +3050,11 @@ class Game:
                 self.screen.blit(self.render(self.font_hud, f"x{p.kills}", (230, 230, 230)), (x0 + 140, 11))
             if self.mode == 'race':
                 self.screen.blit(self.render(self.font_tiny, f"x{p.kills}", (230, 60, 55)), (x0 + 184, 13))
+            elif t and t.alive and t.special:
+                ready = t.special_charge <= 0
+                label = SPECIAL_NAMES[t.special] if ready else f"{SPECIAL_NAMES[t.special]} {math.ceil(t.special_charge)}"
+                self.screen.blit(self.render(self.font_tiny, label, SPECIAL_COLORS[t.special] if ready else (120, 120, 128)),
+                                 (x0 + 134, 27))
             for i in range(self.win_score() if self.mode != 'coop' else 0):
                 cx = x0 + 134 + i * 14
                 if i < p.score:
@@ -2847,7 +3191,7 @@ class Game:
         self.arena.draw_bushes(self.screen, self.now)
         self.dim(170)
         self.text("TANK ARENA", self.font_big, (240, 220, 120), (W // 2, 130))
-        self.text("Left stick drive   •   Right stick aim   •   RT / RB / A fire", self.font_small, (200, 200, 200), (W // 2, 200))
+        self.text("Left stick drive   •   Right stick aim   •   RT / RB / A fire   •   LT / LB / X special", self.font_small, (200, 200, 200), (W // 2, 200))
         ammo = "refilled every lap" if self.mode == 'race' else "grab the ammo crates to reload"
         self.text(f"{MAX_AMMO} shells per tank - {ammo}", self.font_hud, (230, 200, 110), (W // 2, 236))
 
@@ -2887,7 +3231,7 @@ class Game:
             msg = ("Press START to begin" if len(self.players) > 1 or self.mode != 'versus'
                    else "Press START for solo practice (2+ players for a match)")
             self.text(msg, self.font_small, (255, 255, 255), (W // 2, 590))
-        self.text("Keyboard P1: WASD drive, Q/E aim, SPACE join+fire, X leave   •   P2: arrows drive, , . aim, R-CTRL join+fire, DEL leave   •   ENTER start",
+        self.text("Keyboard P1: WASD drive, Q/E aim, SPACE join+fire, F special, X leave   •   P2: arrows, , . aim, R-CTRL join+fire, / special, DEL leave   •   ENTER start",
                   self.font_tiny, (150, 150, 155), (W // 2, 630), shadow=False)
         goal = {'versus': f"First to {WIN_SCORE} round wins", 'coop': "Wave N brings N ghouls",
                 'race': f"{RACE_LAPS} laps, first to {RACE_WIN_SCORE} race wins"}[self.mode]

@@ -55,6 +55,18 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 - Pathing: `compute_flow` is a Dijkstra distance field from all live tanks (bricks cost 6, steel and water are blocked), recomputed every 0.25 s. Walkers step to the downhill neighbour tile (`ghoul_step_target`) and claw bricks in the way. Ghosts ignore walls and are drawn above bushes.
 - In co-op, bullets skip tanks entirely (no friendly fire) and don't cancel each other. The `coopover` state shows the results.
 
+## Special weapons
+- `Tank.special` is `'rocket'`, `'mortar'` or `'tesla'`. `special_recharge` is 0 for co-op packets (one shot, then
+  the special is cleared) and `SPECIAL_RECHARGE` (7 s) for the versus catch-up weapon. `special_charge` counts down
+  to ready. The user asked for these rules: co-op packets appear only while exactly one tank of 2+ players is alive
+  (`update_packet`); in versus, the lowest-score players get a random rechargeable special in `new_round`, but
+  only once someone is ahead.
+- Input: the `'fire2'` pad button (LT/LB/X, keyboard F and `/`) goes to `special_input`. The mortar is
+  hold-to-aim (`Tank.mortar_aim` grows by `MORTAR_AIM_SPEED`) and fires on release.
+- `targets(owner)` lists what specials hurt: ghouls in co-op, enemy tanks in versus (never the shooter or allies).
+  Rockets and mortars are `Missile`s in `self.missiles` and end in `explode()` (2 damage in the radius, and bricks).
+  `tesla()` floods outward through touching targets; bolts live in `self.zaps`.
+
 ## Race mode
 - `mode == 'race'` swaps the arena for a `Track` (built lazily in `new_race`): a closed Catmull-Rom loop resampled
   every `TRACK_STEP` px into `pts`/`ang`/`nx`/`ny`, rotated so index 0 is the start line on the straightest stretch.
@@ -76,7 +88,7 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   the race below 120 FPS. They're only rotated live while airborne, because of the scaling.
 
 ## Math break
-- `quiz_clock` counts seconds in `countdown`/`play`. Once it passes `QUIZ_INTERVAL` (300 s), `update()` opens a
+- `quiz_clock` counts seconds in `countdown`/`play`. Once it passes `QUIZ_INTERVAL` (240 s), `update()` opens a
   `Quiz` at the next `at_break()`: lobby, roundover, matchover, coopover, or an empty co-op wave break. While
   `self.quiz` is set, `update()` only runs `update_quiz`, so the game is frozen. The clock resets when a question
   is answered correctly. The user asked for this: keep it mandatory and never open it mid-action.

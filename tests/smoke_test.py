@@ -50,7 +50,13 @@ for i in range(6000):
         pad = g.pads[pid]
         pad.move = (random.uniform(-1, 1), random.uniform(-1, 1))
         pad.aim = random.uniform(-3.2, 3.2)
-        pad.held, pad.pressed = {"fire"}, set()
+        me = g.player_for_pad(pid).tank
+        foes = [q.tank for q in g.players if q.tank and q.tank.alive and q.tank is not me]
+        if me and foes and random.random() < 0.5:   # half the time, aim at the nearest enemy
+            f = min(foes, key=lambda f: (f.x - me.x) ** 2 + (f.y - me.y) ** 2)
+            pad.aim = tanks.math.atan2(f.y - me.y, f.x - me.x)
+        pad.held = {"fire"} | ({"fire2"} if random.random() < 0.6 else set())   # also exercises the specials
+        pad.pressed = {"fire2"} if random.random() < 0.05 else set()
     had_crate = g.crate
     alive_before = sum(1 for p in g.players if p.tank and p.tank.alive)
     g.update(1 / 60)
@@ -67,6 +73,115 @@ fps = frames / (time.time() - t0)
 print(f"versus: frames={frames} fps={fps:.0f} crates={crates} kills={kills} scores={[p.score for p in g.players]}")
 assert crates > 0, "no ammo crate ever spawned"
 assert kills > 0, "no tank was ever destroyed"
+
+# ---- special weapons
+assert tanks.CRATE_RESPAWN == 9.0 and tanks.QUIZ_INTERVAL == 240.0
+
+
+def open_arena():
+    g.arena.grid = [[tanks.EMPTY] * tanks.COLS for _ in range(tanks.ROWS)]
+    g.arena.ground = None
+
+
+def run_missiles():
+    for _ in range(300):
+        g.update_missiles(1 / 60)
+        if not g.missiles:
+            return
+    raise AssertionError("missile never landed")
+
+
+# versus: only the players in last place get one, and it recharges every 7 s
+for p, sc in zip(g.players, (2, 1, 0, 0, 1, 2)):
+    p.score = sc
+g.new_round()
+for p in g.players:
+    assert (p.tank.special is not None) == (p.score == 0), "only the last-placed players get a special"
+    assert p.tank.special is None or p.tank.special_recharge == 7.0
+for p in g.players:
+    p.score = 0
+g.new_round()
+assert not any(p.tank.special for p in g.players), "nobody is last while everyone is level"
+
+g.state = "play"
+open_arena()
+me, foe, other = (p.tank for p in g.players[:3])
+for t in g.players[3:]:
+    t.tank.alive = False
+me.x, me.y, me.turret = 200, 300, 0.0
+foe.x, foe.y, foe.hp = 600, 300, 3
+other.x, other.y, other.hp = 600, 600, 3
+me.special, me.special_recharge, me.special_charge = "rocket", 7.0, 0.0
+g.fire_special(me)
+run_missiles()
+assert foe.hp == 1 and other.hp == 3 and me.hp == 3, "rocket: 2 damage in the blast area only"
+assert me.special == "rocket" and me.special_charge == 7.0, "versus specials recharge"
+
+# mortar flies over steel and lands on the red circle
+g.arena.grid[(300 - tanks.HUD) // tanks.T][10] = tanks.STEEL
+me.special, me.special_charge = "mortar", 0.0
+foe.hp = 3
+me.mortar_aim = 400
+g.fire_special(me)
+assert g.missiles and g.missiles[0].kind == "mortar"
+run_missiles()
+assert foe.hp == 1, "mortar should land on the target circle and do 2 damage"
+
+# mortar aiming with the pad: hold to walk the circle out, release to fire
+pad = g.pads[me.player.pad_id]
+me.special_charge = 0.0
+pad.move, pad.aim, pad.turret_rot = (0, 0), None, 0.0
+pad.held, pad.pressed = {"fire2"}, {"fire2"}
+for _ in range(30):
+    g.update_tanks(1 / 60)
+    pad.pressed = set()
+assert me.mortar_aim > tanks.MORTAR_MIN
+pad.held = set()
+g.update_tanks(1 / 60)
+assert me.mortar_aim is None and g.missiles, "releasing the button fires the mortar"
+g.missiles.clear()
+
+# co-op: a lone survivor gets one-shot packets; the tesla zaps a chain of touching ghouls
+g.to_lobby()
+g.mode = "coop"
+g.players = g.players[:2]
+g.start_match()
+g.state = "play"
+open_arena()
+lone, fallen = g.players[0].tank, g.players[1].tank
+fallen.alive = False
+g.ghouls = []
+for _ in range(60 * 10):
+    g.update_packet(1 / 60)
+    if g.packet:
+        break
+assert g.packet, "no special packet for the lone survivor"
+g.packet[2] = "tesla"
+lone.x, lone.y = g.packet[0], g.packet[1]
+g.update_packet(1 / 60)
+assert lone.special == "tesla" and g.packet is None
+lone.x, lone.y = 300, 300
+chain = [tanks.Ghoul("zombie", 400, 300), tanks.Ghoul("mummy", 400 + 2 * tanks.GHOUL_R + 4, 300),
+         tanks.Ghoul("ghost", 400 + 4 * tanks.GHOUL_R + 8, 300)]
+loner = tanks.Ghoul("vampire", 300, 600)
+for gh in chain + [loner]:
+    gh.emerge = 0
+g.ghouls = chain + [loner]
+g.fire_special(lone)
+assert all(gh.hp == tanks.GHOUL_HP - 1 for gh in chain), "every ghoul in the touching chain loses 1"
+assert loner.hp == tanks.GHOUL_HP, "a ghoul not touching the chain is spared"
+assert lone.special is None, "co-op packets are one shot"
+g.packet_timer = 0
+g.update_packet(1 / 60)
+assert g.packet, "packets keep coming while one tank is left"
+fallen.alive = True
+g.packet = None
+g.packet_timer = 0
+g.update_packet(1 / 60)
+assert g.packet is None, "no packets while two tanks are alive"
+g.players[0].score = g.players[1].score = 0
+g.mode = "versus"
+g.players = [tanks.Player(i, pid) for i, pid in enumerate(fake)]
 
 # ---- co-op: bots shoot the nearest ghoul at close range
 import math  # noqa: E402
