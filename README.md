@@ -1,12 +1,16 @@
 # Tank Arena
 
-A local multiplayer top-down tank shooter for Linux. Up to 6 players (any mix of controllers and the two keyboard slots) fight on one static screen.
+A local multiplayer top-down tank shooter for Linux and Windows. Up to 6 players (any mix of controllers and the two keyboard slots) fight on one static screen.
 
 ## Run
+**Windows:** download [TankArena.exe](https://github.com/poletko/tank-game/releases/latest/download/TankArena.exe) and double-click it. Nothing needs installing. It's built automatically from the latest code. The first time, Windows may say it "protected your PC" because the app isn't signed: click **More info**, then **Run anyway**.
+
+**Linux:**
+
     ./run.sh              # fullscreen
     ./run.sh --windowed   # in a window
 
-Needs Python 3 and pygame (`sudo apt install python3-pygame`).
+Needs Python 3 and pygame (`sudo apt install python3-pygame`). On Windows you can also run from source with Python and `pip install pygame`, then `run.bat`.
 
 ## Controls (Xbox controller)
 | Input | Action |

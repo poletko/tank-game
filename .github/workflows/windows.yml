@@ -1,0 +1,61 @@
+# Builds TankArena.exe on Windows on every push to main and publishes it as the "latest" release:
+# https://github.com/poletko/tank-game/releases/latest/download/TankArena.exe
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pygame==2.6.1 pyinstaller==6.11.1
+
+      - name: Smoke test
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python tests/smoke_test.py
+
+      - name: Build TankArena.exe
+        run: pyinstaller --onefile --windowed --name TankArena tanks.py
+
+      - name: Check the .exe starts and plays every mode
+        shell: pwsh
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          $p = Start-Process -FilePath dist\TankArena.exe -ArgumentList '--windowed', '--check' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "TankArena.exe --check exited with $($p.ExitCode)" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TankArena-windows
+          path: dist/TankArena.exe
+
+      - name: Publish the "latest" release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/TankArena.exe --target "$GITHUB_SHA" --latest \
+            --title "Tank Arena for Windows (latest build)" \
+            --notes "Built automatically from ${GITHUB_SHA::7}. Download TankArena.exe and double-click it. Windows may warn that the app is unrecognised: click More info, then Run anyway."

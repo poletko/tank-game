@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Public domain (The Unlicense, see LICENSE): do whatever you want with this.
-"""Tank Arena - local multiplayer top-down tank shooter (Linux, Xbox controllers).
+"""Tank Arena - local multiplayer top-down tank shooter (Linux and Windows, Xbox controllers).
 
 Left stick: drive   Right stick: aim turret   RT / RB / A: fire   LT / LB / X: special weapon
 START: begin match / pause   B: leave lobby   BACK (in pause): quit to lobby
@@ -3250,6 +3250,18 @@ class Game:
 
     # ---- main loop
 
+    def self_check(self):
+        """Play a few seconds of every mode with idle keyboard players, then return."""
+        self.players = [Player(0, 'kb1'), Player(1, 'kb2')]
+        for mode in ('versus', 'coop', 'race'):
+            self.mode = mode
+            self.start_match()
+            for _ in range(240):
+                self.update(1 / 60)
+                self.draw()
+        self.quiz = Quiz()
+        self.draw()
+
     def run(self):
         added = {pygame.JOYDEVICEADDED, getattr(pygame, 'CONTROLLERDEVICEADDED', -1)}
         removed = {pygame.JOYDEVICEREMOVED, getattr(pygame, 'CONTROLLERDEVICEREMOVED', -1)}
@@ -3284,13 +3296,15 @@ class Game:
 
 
 def main():
-    if not sys.platform.startswith('linux'):
-        sys.exit("Tank Arena is built for Linux.")
     pygame.mixer.pre_init(22050, -16, 2, 512)
     pygame.init()
     if sdl_ctrl:
         sdl_ctrl.init()
-    Game(fullscreen='--windowed' not in sys.argv).run()
+    game = Game(fullscreen='--windowed' not in sys.argv)
+    if '--check' in sys.argv:   # the Windows build runs this to prove the bundled .exe starts
+        game.self_check()
+    else:
+        game.run()
     pygame.quit()
 
 

@@ -1,10 +1,13 @@
 # Tank Arena: notes for editing
 
-A local multiplayer top-down tank shooter for Linux in a single Python file using pygame. There are no asset files: graphics and sounds are generated in code at startup.
+A local multiplayer top-down tank shooter for Linux and Windows in a single Python file using pygame. There are no asset files: graphics and sounds are generated in code at startup.
 
 ## Files
 - `tanks.py`: the whole game.
-- `run.sh`: launcher; checks that pygame is installed and passes args through (`--windowed`).
+- `run.sh` / `run.bat`: Linux / Windows launchers; they check that pygame is installed and pass args through (`--windowed`).
+- `.github/workflows/windows.yml`: on every push to `main`, GitHub runs the smoke test on Windows, builds `TankArena.exe` with
+  PyInstaller, runs `TankArena.exe --check` (`Game.self_check`: a few seconds of every mode), and replaces the
+  `latest` release with it. If the build fails, the old release stays. Check the Actions tab after pushing.
 - `tests/smoke_test.py`: headless test that runs the game with fake players and random inputs.
 - `README.md`: player-facing docs (controls, rules). Keep it in sync when controls or rules change.
 
@@ -100,7 +103,7 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 ## Conventions
 - Keep it a single file with no dependencies beyond pygame and no external assets.
 - Match the existing style: plain classes, short comments only where something is non-obvious.
-- Linux-only (the game exits on other platforms). Controller support relies on SDL's GameController
+- Must work on Linux and Windows: no shell calls, OS paths or platform-specific APIs. Controller support relies on SDL's GameController
   mappings, so test new input features against `ctrl` pads first.
 - Performance budget: 120 FPS. Avoid per-frame full-screen alpha blits and per-tile alpha blits;
   bake them into cached layers instead. Measure with the smoke test's FPS line.
