@@ -72,12 +72,14 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   Snake: `trail` keeps head positions every `SNAKE_TRAIL_STEP` px; `segs` (head first) are solid for tanks and
   count for bullets, `targets()` and blasts (deduplicated per boss). Witch: flies like a ghost, lines up via
   `witch_target`, and her cats arc over walls and go off through `explode(x, y, r, None)`, which hurts tanks.
+- Losing with a boss alive (or pending) sets `self.taunt` = `make_taunt_screen(kind)`: an opaque full-screen portrait
+  (`make_boss_sprites(kind, 9)`) with a random line from `BOSS_TAUNTS`, drawn instead of the world in `coopover`.
 
 ## Special weapons
 - `Tank.special` is `'rocket'`, `'mortar'` or `'tesla'`. `special_recharge` is 0 for co-op packets (one shot, then
   the special is cleared) and `SPECIAL_RECHARGE` (7 s) for the versus catch-up weapon. `special_charge` counts down
-  to ready. The user asked for these rules: co-op packets appear only while exactly one tank of 2+ players is alive
-  (`update_packet`); in versus, the lowest-score players get a random rechargeable special in `new_round`, but
+  to ready. The user asked for these rules: co-op packets keep appearing (one at a time, `SPECIAL_PACKET_DELAY`
+  apart) while any live tank has no special (`update_packet`); in versus, the lowest-score players get a random rechargeable special in `new_round`, but
   only once someone is ahead.
 - Input: the `'fire2'` pad button (LT/LB/X, keyboard F and `/`) goes to `special_input`. The mortar is
   hold-to-aim (`Tank.mortar_aim` grows by `MORTAR_AIM_SPEED`) and fires on release.
@@ -139,6 +141,8 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 
 ## Conventions
 - Keep it a single file with no dependencies beyond pygame and no external assets.
+- All on-screen text is in Slovenian (the user asked for it). Keep new text Slovenian, and check it fits: it's
+  often longer than the English. Code, comments and docs stay in English.
 - Match the existing style: plain classes, short comments only where something is non-obvious.
 - Must work on Linux, Windows and in the browser: no shell calls, OS paths, threads, files or platform-specific APIs. Controller support relies on SDL's GameController
   mappings, so test new input features against `ctrl` pads first.

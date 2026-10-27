@@ -78,10 +78,20 @@ GHOUL_COLORS = {'mummy': (215, 200, 155), 'zombie': (100, 160, 70), 'vampire': (
 # co-op bosses: one comes with every BOSS_EVERY-th wave, in BOSS_KINDS order, tougher each time round
 BOSS_EVERY = 3
 BOSS_KINDS = ('knight', 'spider', 'snake', 'witch')
-BOSS_NAMES = {'knight': "THE CURSED KNIGHT", 'spider': "THE SPIDER QUEEN", 'snake': "THE GREAT SNAKE", 'witch': "THE WITCH"}
+BOSS_NAMES = {'knight': "PREKLETI VITEZ", 'spider': "PAJKOVA KRALJICA", 'snake': "VELIKA KAČA", 'witch': "ČAROVNICA"}
 BOSS_COLORS = {'knight': (160, 120, 230), 'spider': (150, 50, 170), 'snake': (110, 190, 70), 'witch': (150, 230, 100)}
-BOSS_HP = 25
-BOSS_HP_GROWTH = 15         # extra hit points each time the bosses come round again
+BOSS_TAUNTS = {   # shown on the game over portrait when a boss wins
+    'knight': ("Tristo let prekletstva,\nvi pa ste le pločevinke.", "Moj meč se vedno vrne.\nVi se ne boste.",
+               "Na kolena pred\nPrekletim vitezom!"),
+    'spider': ("Ujeli ste se v mojo mrežo.\nČas je za večerjo.", "Osem nog, osem oči\nin nič usmiljenja.",
+               "Kar ostanite.\nMreža je mehka."),
+    'snake': ("Sssss... prepočasssni\nssste bili.", "Pogoltnila sssem vasss\nz gosenicami vred.",
+              "Dolga sssem, lačna sssem,\nvi pa ssste bili kosssilo."),
+    'witch': ("Hi-hi-hi! Moje mucke\nvas lepo pozdravljajo.", "Mijav... BUM!\nHi-hi-hi!",
+              "Iz vaših tankov\nbom skuhala juho!"),
+}
+BOSS_HP = 17
+BOSS_HP_GROWTH = 10         # extra hit points each time the bosses come round again
 BOSS_R = 19
 BOSS_SPEED = TANK_SPEED * 0.72
 BOSS_ATTACK_CD = 2.6        # seconds between ranged attacks
@@ -102,10 +112,10 @@ CAT_RADIUS = 58
 
 # special weapons: lone co-op survivors find one-shot packets, the last-placed versus player gets a rechargeable one
 SPECIALS = ('rocket', 'mortar', 'tesla')
-SPECIAL_NAMES = {'rocket': "ROCKET", 'mortar': "MORTAR", 'tesla': "TESLA"}
+SPECIAL_NAMES = {'rocket': "RAKETA", 'mortar': "MINOMET", 'tesla': "TESLA"}
 SPECIAL_COLORS = {'rocket': (255, 90, 60), 'mortar': (255, 170, 50), 'tesla': (110, 210, 255)}
 SPECIAL_RECHARGE = 7.0
-SPECIAL_PACKET_DELAY = 4.0  # co-op: seconds between packets while one tank is left
+SPECIAL_PACKET_DELAY = 4.0  # co-op: seconds between special weapon packets
 SPECIAL_PACKET_LIFE = 12.0
 BLAST_DAMAGE = 2
 ROCKET_SPEED = 900
@@ -147,7 +157,7 @@ SPECTATORS = 50
 TREES = 14
 GRASS = (62, 110, 52)
 ASPHALT = (66, 68, 74)
-ORDINALS = ('1st', '2nd', '3rd', '4th', '5th', '6th')
+ORDINALS = ('1.', '2.', '3.', '4.', '5.', '6.')
 
 # math break
 QUIZ_INTERVAL = 240.0       # seconds of play between questions
@@ -156,12 +166,12 @@ QUIZ_TRIES = 3              # wrong answers before the solution is shown and a n
 MAX_PLAYERS = 6
 
 PLAYER_COLORS = [
-    ((90, 200, 90), "GREEN"),
-    ((70, 140, 240), "BLUE"),
-    ((240, 150, 40), "ORANGE"),
-    ((220, 80, 200), "PINK"),
-    ((225, 65, 60), "RED"),
-    ((230, 210, 60), "YELLOW"),
+    ((90, 200, 90), "ZELENI"),
+    ((70, 140, 240), "MODRI"),
+    ((240, 150, 40), "ORANŽNI"),
+    ((220, 80, 200), "ROZA"),
+    ((225, 65, 60), "RDEČI"),
+    ((230, 210, 60), "RUMENI"),
 ]
 CORNER_SPAWNS = [(2, 2), (COLS - 3, ROWS - 3), (COLS - 3, 2), (2, ROWS - 3)]
 SIDE_SPAWNS = [(2, ROWS // 2), (COLS - 3, ROWS // 2)]   # used only with 5-6 players
@@ -436,7 +446,7 @@ JOY_LAYOUT = WEB_LAYOUT if WEB else XPAD_LAYOUT
 class Pad:
     """One input device: SDL game controller, raw joystick, or a keyboard half."""
 
-    LABELS = {'ctrl': "Controller", 'joy': "Gamepad", 'kb1': "Keyboard WASD", 'kb2': "Keyboard Arrows"}
+    LABELS = {'ctrl': "Kontroler", 'joy': "Igralni plošček", 'kb1': "Tipkovnica WASD", 'kb2': "Tipkovnica puščice"}
 
     def __init__(self, pid, kind, dev=None):
         self.pid, self.kind, self.dev = pid, kind, dev
@@ -681,9 +691,10 @@ def make_ghoul_sprites(kind):
     return out
 
 
-def make_boss_sprites(kind):
-    """Bosses, drawn like the ghouls but bigger: {(state, facing): surface}, plus extra parts per kind."""
-    S = SS
+def make_boss_sprites(kind, scale=1):
+    """Bosses, drawn like the ghouls but bigger: {(state, facing): surface}, plus extra parts per kind.
+    `scale` > 1 draws them that many times larger, for the game over portrait."""
+    S = SS if scale == 1 else 2 * scale
     N = 58 if kind == 'witch' else 52
     s = pygame.Surface((N * S, N * S), pygame.SRCALPHA)
 
@@ -727,7 +738,7 @@ def make_boss_sprites(kind):
         pygame.draw.rect(sw, (205, 165, 60), (10 * S, 25 * S, 16 * S, 3 * S), border_radius=S)
         pygame.draw.rect(sw, (90, 55, 30), (17 * S, 28 * S, 2 * S, 5 * S))
         pygame.draw.circle(sw, (205, 165, 60), (18 * S, 34 * S), 2 * S)
-        extra['sword'] = pygame.transform.smoothscale(sw, (36, 36)).convert_alpha()
+        extra['sword'] = pygame.transform.smoothscale(sw, (36 * scale, 36 * scale)).convert_alpha()
     elif kind == 'spider':
         leg = (40, 22, 48)
         for side in (-1, 1):
@@ -765,7 +776,7 @@ def make_boss_sprites(kind):
             pygame.draw.circle(g, (95, 175, 62), (c, c), (r - 1.3) * S)
             pygame.draw.polygon(g, (55, 115, 40), [(c - r * 0.55 * S, c), (c, c - r * 0.55 * S), (c + r * 0.55 * S, c), (c, c + r * 0.55 * S)])
             pygame.draw.circle(g, (150, 210, 110), (c - r * 0.35 * S, c - r * 0.4 * S), r * 0.25 * S)
-            segs.append(pygame.transform.smoothscale(g, (n, n)).convert_alpha())
+            segs.append(pygame.transform.smoothscale(g, (n * scale, n * scale)).convert_alpha())
         extra['segs'] = segs
         extra['segs_white'] = []
         for g in segs:
@@ -800,9 +811,9 @@ def make_boss_sprites(kind):
         pygame.draw.circle(cat, (200, 240, 80), (15.5 * S, 9 * S), 1.6 * S)
         pygame.draw.lines(cat, fur, False, [(20 * S, 20 * S), (24 * S, 16 * S), (24 * S, 10 * S)], int(2 * S))
         pygame.draw.circle(cat, (255, 170, 40), (24 * S, 9 * S), 1.8 * S)  # lit fuse
-        extra['cat'] = pygame.transform.smoothscale(cat, (26, 26)).convert_alpha()
+        extra['cat'] = pygame.transform.smoothscale(cat, (26 * scale, 26 * scale)).convert_alpha()
 
-    base = pygame.transform.smoothscale(s, (N, N)).convert_alpha()
+    base = pygame.transform.smoothscale(s, (N * scale, N * scale)).convert_alpha()
     white = base.copy()
     white.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGBA_MAX)
     out = dict(extra)
@@ -1810,6 +1821,7 @@ class Game:
         self.ending = None
         self.round_winner = None
         self.go_timer = 0.0
+        self.taunt = None    # opaque full-screen boss portrait when a boss wave ends the co-op game
 
     # ---- devices
 
@@ -1863,6 +1875,7 @@ class Game:
         self.state = 'lobby'
         self.paused = False
         self.lobby_cache = None     # the arena behind it changed during the match
+        self.taunt = None
         self.clear_entities()
         for p in self.players:
             p.score = 0
@@ -2029,6 +2042,10 @@ class Game:
                     self.best_wave = max(self.best_wave, self.wave)
                     self.state = 'coopover'
                     self.timer = 1.5
+                    boss = self.bosses[0].kind if self.bosses else self.boss_pending and self.boss_pending[0]
+                    if boss:
+                        self.taunt = self.make_taunt_screen(boss)
+                        self.sounds.play('boss')
         elif self.state == 'play':
             self.update_crate(dt)
             alive = [p for p in self.players if p.tank and p.tank.alive]
@@ -2241,7 +2258,7 @@ class Game:
                 t.ammo = MAX_AMMO
                 self.sounds.play('pickup')
                 self.rumble(t.player, 0.2, 0.6, 150)
-                self.texts.append(["AMMO FULL", c[0], c[1] - 20, 0.0, (255, 220, 100)])
+                self.texts.append(["POLNO STRELIVA", c[0], c[1] - 20, 0.0, (255, 220, 100)])
                 self.sparks(c[0], c[1], (255, 220, 120), 18)
                 self.flashes.append([c[0], c[1], 0.0, 0.3, 60])
                 self.crate = None
@@ -2422,9 +2439,8 @@ class Game:
         self.zaps = [z for z in self.zaps if z[2] > 0]
 
     def update_packet(self, dt):
-        """Co-op: while only one tank is left, special weapon packets keep turning up for it."""
+        """Co-op: special weapon packets keep turning up while some live tank has no special."""
         alive = [p.tank for p in self.players if p.tank and p.tank.alive]
-        lone = len(self.players) > 1 and len(alive) == 1
         if self.packet:
             pk = self.packet
             pk[3] -= dt
@@ -2441,7 +2457,7 @@ class Game:
             if pk[3] <= 0:
                 self.packet = None
                 self.packet_timer = SPECIAL_PACKET_DELAY
-        elif lone and not alive[0].special:
+        elif any(not t.special for t in alive):
             self.packet_timer -= dt
             if self.packet_timer <= 0:
                 spot = self.free_spot()
@@ -2609,22 +2625,22 @@ class Game:
                 self.spawn_timer = max(0.5, 1.6 - 0.06 * self.wave)
         elif not self.ghouls and not self.bosses:
             self.wave_break = WAVE_BREAK
-            self.banner = [f"WAVE {self.wave} CLEARED", 2.5]
+            self.banner = [f"VAL {self.wave} OČIŠČEN", 2.5]
             self.sounds.play('pickup')
             for t in tanks:   # every cleared wave repairs the tanks
                 if t.hp < t.max_hp:
                     t.hp = t.max_hp
-                    self.texts.append(["REPAIRED", t.x, t.y - 24, 0.0, (120, 230, 120)])
+                    self.texts.append(["POPRAVLJEN", t.x, t.y - 24, 0.0, (120, 230, 120)])
 
     def start_wave(self):
         self.wave += 1
         self.wave_to_spawn = self.wave      # wave N brings N ghouls
         self.spawn_timer = 0.6
-        self.banner = [f"WAVE {self.wave}", 2.0]
+        self.banner = [f"VAL {self.wave}", 2.0]
         if self.wave % BOSS_EVERY == 0:     # ...and every third one a boss as well
             k = self.wave // BOSS_EVERY - 1
             self.boss_pending = (BOSS_KINDS[k % len(BOSS_KINDS)], BOSS_HP + BOSS_HP_GROWTH * (k // len(BOSS_KINDS)))
-            self.banner = [f"WAVE {self.wave}: BOSS", 2.0]
+            self.banner = [f"VAL {self.wave}: BOSS", 2.0]
         self.sounds.play('wave')
         for p in self.players:
             if not (p.tank and p.tank.alive):
@@ -3046,7 +3062,7 @@ class Game:
         self.rings.append([b.x, b.y, 0.0, 0.6])
         self.flashes.append([b.x, b.y, 0.0, 0.6, 180])
         self.shake = max(self.shake, 0.8)
-        self.banner = ["BOSS DEFEATED", 2.5]
+        self.banner = ["BOSS PREMAGAN", 2.5]
         self.sounds.play('explode')
         self.rumble(player, 1.0, 1.0, 500)
         for k in range(3):   # loot
@@ -3095,7 +3111,7 @@ class Game:
         if self.finishers == 1:
             self.round_winner = p
             p.score += 1
-            self.banner = [f"{p.cname} WINS!", 2.5]
+            self.banner = [f"{p.cname} ZMAGA!", 2.5]
             self.sounds.play('cheer')
             self.ending = 4.0 if len(self.players) > 1 else 2.0
             for gh in self.spectators:
@@ -3228,7 +3244,7 @@ class Game:
                     self.finish(t)
                 else:
                     self.sounds.play('pickup')
-                    self.texts.append([f"LAP {lap + 1}", t.x, t.y - 20, 0.0, t.player.color])
+                    self.texts.append([f"KROG {lap + 1}", t.x, t.y - 20, 0.0, t.player.color])
             far = d2 > (TRACK_W / 2 + 60) ** 2 and t.z <= 0
             t.lost = t.lost + dt if far else 0.0
             if t.lost > RACE_LOST_TIME:
@@ -3384,7 +3400,7 @@ class Game:
             life = random.uniform(0.3, 0.7)
             self.particles.append([r.x, r.y, math.cos(a) * sp, math.sin(a) * sp, life, life, 'fire', random.uniform(5, 10)])
         self.flashes.append([r.x, r.y, 0.0, 0.4, 90])
-        self.texts.append(["BANISHED!", r.x, r.y - 20, 0.0, (255, 150, 50)])
+        self.texts.append(["IZGNAN!", r.x, r.y - 20, 0.0, (255, 150, 50)])
         self.shake = max(self.shake, 0.3)
         self.sounds.play('explode')
 
@@ -3438,7 +3454,7 @@ class Game:
             s = random.uniform(60, 240)
             self.particles.append([gh.x, gh.y - 6, math.cos(a) * s, math.sin(a) * s, 0.35, 0.35, 'spark',
                                    random.uniform(1.5, 3), (190, 15, 20)])
-        self.texts.append([random.choice(("SPLAT!", "SQUISH!", "OOPS!")), gh.x, gh.y - 20, 0.0, (230, 40, 40)])
+        self.texts.append([random.choice(("ŠPLAT!", "ČVAK!", "UPS!")), gh.x, gh.y - 20, 0.0, (230, 40, 40)])
         self.sounds.play('splat')
         self.rumble(player, 0.3, 0.4, 120)
         for other in self.spectators:   # the crowd notices
@@ -3848,7 +3864,7 @@ class Game:
         for t in tanks:   # ammo warnings, drawn under bushes so hiding still works
             if t.ammo == 0:
                 if int(self.now * 4) % 2:
-                    self.text("EMPTY", self.font_tiny, (255, 90, 80), (t.x, t.y - 27), w, shadow=True)
+                    self.text("PRAZNO", self.font_tiny, (255, 90, 80), (t.x, t.y - 27), w, shadow=True)
             elif t.ammo <= 3:
                 self.text(str(t.ammo), self.font_tiny, (255, 215, 90), (t.x, t.y - 27), w, shadow=True)
         near = None
@@ -3893,7 +3909,7 @@ class Game:
             ammo = t.ammo if t and t.alive else 0
             if self.mode == 'race':
                 lap = clamp(t.lap + 1, 1, RACE_LAPS) if t else 1
-                info = "DONE" if t and t.finished else f"LAP {lap}/{RACE_LAPS}"
+                info = "CILJ" if t and t.finished else f"KROG {lap}/{RACE_LAPS}"
                 self.screen.blit(self.render(self.font_tiny, info, (225, 225, 225)), (x0 + 62, 3))
                 if t and len(self.players) > 1:
                     self.screen.blit(self.render(self.font_tiny, ORDINALS[t.place - 1], p.color), (x0 + 128, 3))
@@ -3921,7 +3937,7 @@ class Game:
                 else:
                     pygame.draw.circle(self.screen, (90, 90, 95), (cx, HUD // 2), 5, 2)
             if p.pad_id not in self.pads and int(self.now * 2) % 2:
-                img = self.render(self.font_tiny, "NO PAD", (255, 80, 80))
+                img = self.render(self.font_tiny, "NI PADA", (255, 80, 80))
                 self.screen.fill((22, 24, 28), (x0 + 60, 2, 66, HUD - 4))
                 self.screen.blit(img, img.get_rect(center=(x0 + 92, HUD // 2)))
 
@@ -3930,14 +3946,14 @@ class Game:
         if self.mode == 'coop' and self.state in ('countdown', 'play'):
             left = len(self.ghouls) + self.wave_to_spawn + len(self.bosses) + bool(self.boss_pending)
             if self.wave:
-                self.text(f"WAVE {self.wave}   •   {left} LEFT", self.font_hud, (230, 220, 200), (W // 2, HUD + 18))
+                self.text(f"VAL {self.wave}   •   ŠE {left}", self.font_hud, (230, 220, 200), (W // 2, HUD + 18))
             for k, b in enumerate(self.bosses):   # boss health bars
                 y = HUD + 44 + k * 34
                 self.text(BOSS_NAMES[b.kind], self.font_tiny, BOSS_COLORS[b.kind], (W // 2, y))
                 self.screen.fill((20, 20, 24), (W // 2 - 182, y + 9, 364, 12))
                 self.screen.fill((200, 40, 50), (W // 2 - 180, y + 11, int(360 * b.hp / b.max_hp), 8))
             if self.banner and self.state == 'play':
-                self.text(self.banner[0], self.font_big, (200, 255, 170) if "CLEARED" in self.banner[0] else (255, 120, 90), (W // 2, cy))
+                self.text(self.banner[0], self.font_big, (200, 255, 170) if "OČIŠČEN" in self.banner[0] else (255, 120, 90), (W // 2, cy))
         if self.mode == 'race' and self.state in ('countdown', 'play'):
             m, s = divmod(self.race_time, 60)
             self.text(f"{int(m)}:{s:04.1f}", self.font_hud, (230, 230, 230), (W // 2, HUD + 18))
@@ -3945,9 +3961,9 @@ class Game:
                 self.text(self.banner[0], self.font_big, self.round_winner.color if self.round_winner else (255, 255, 255), (W // 2, cy))
         if self.state == 'coopover':
             self.dim(170)
-            self.text("THE TANKS HAVE FALLEN", self.font_med, (255, 110, 90), (W // 2, cy - 80))
+            self.text("TANKI SO PADLI", self.font_med, (255, 110, 90), (W // 2, cy - 80))
             total = sum(p.kills for p in self.players)
-            self.text(f"Reached wave {self.wave}   •   {total} ghoul{'s' if total != 1 else ''} destroyed",
+            self.text(f"Dosežen val {self.wave}   •   uničenih pošasti: {total}",
                       self.font_small, (230, 230, 230), (W // 2, cy - 20))
             parts = [(f"{p.cname} {p.kills}", p.color) for p in self.players]
             imgs = [self.font_small.render(t, True, c) for t, c in parts]
@@ -3956,37 +3972,37 @@ class Game:
                 self.screen.blit(img, (x, cy + 25))
                 x += img.get_width() + 40
             if self.timer <= 0:
-                self.text("Press A to continue", self.font_small, (220, 220, 220), (W // 2, cy + 90))
+                self.text("Pritisni A za nadaljevanje", self.font_small, (220, 220, 220), (W // 2, cy + 90))
             return
         if self.state == 'countdown':
             n = max(1, math.ceil(self.timer))
             self.text(str(n), self.font_big, (255, 255, 255), (W // 2, cy))
         elif self.state == 'play' and self.go_timer > 0:
-            self.text("GO!", self.font_big, (255, 230, 120), (W // 2, cy))
+            self.text("GREMO!", self.font_big, (255, 230, 120), (W // 2, cy))
         elif self.state == 'roundover':
             self.dim(120)
             if self.round_winner:
-                what = "RACE" if self.mode == 'race' else "ROUND"
-                self.text(f"{self.round_winner.cname} WINS THE {what}", self.font_med, self.round_winner.color, (W // 2, cy - 30))
+                what = "DIRKO" if self.mode == 'race' else "RUNDO"
+                self.text(f"{self.round_winner.cname} ZMAGA {what}", self.font_med, self.round_winner.color, (W // 2, cy - 30))
                 if self.mode == 'race':
                     m, s = divmod(self.race_time, 60)
                     splats = sum(p.kills for p in self.players)
-                    self.text(f"{int(m)}:{s:04.1f}   •   {splats} spectator{'s' if splats != 1 else ''} splattered so far",
+                    self.text(f"{int(m)}:{s:04.1f}   •   povoženih gledalcev: {splats}",
                               self.font_hud, (220, 220, 220), (W // 2, cy + 10))
             else:
-                self.text("DRAW!" if len(self.players) > 1 else "ROUND OVER", self.font_med, (230, 230, 230), (W // 2, cy - 30))
+                self.text("NEODLOČENO!" if len(self.players) > 1 else "KONEC RUNDE", self.font_med, (230, 230, 230), (W // 2, cy - 30))
             self.draw_scores(cy + 50)
         elif self.state == 'matchover':
             self.dim(160)
             best = max(self.players, key=lambda p: p.score)
-            self.text(f"{best.cname} WINS THE MATCH!", self.font_med, best.color, (W // 2, cy - 60))
+            self.text(f"{best.cname} ZMAGA TEKMO!", self.font_med, best.color, (W // 2, cy - 60))
             self.draw_scores(cy + 10)
             if self.timer <= 0:
-                self.text("Press A to continue", self.font_small, (220, 220, 220), (W // 2, cy + 90))
+                self.text("Pritisni A za nadaljevanje", self.font_small, (220, 220, 220), (W // 2, cy + 90))
         if self.paused:
             self.dim(150)
-            self.text("PAUSED", self.font_big, (255, 255, 255), (W // 2, cy - 30))
-            self.text("START resume   •   BACK / B quit to lobby", self.font_small, (220, 220, 220), (W // 2, cy + 50))
+            self.text("PAVZA", self.font_big, (255, 255, 255), (W // 2, cy - 30))
+            self.text("START nadaljuj   •   BACK / B nazaj v meni", self.font_small, (220, 220, 220), (W // 2, cy + 50))
 
     def wrap(self, s, font, width):
         lines, cur = [], ""
@@ -4073,7 +4089,7 @@ class Game:
                 blit_center(self.screen, body, x + bw // 2, by + 115)
                 blit_center(self.screen, tur, x + bw // 2, by + 115)
             elif int(self.now * 2) % 2:
-                self.text("Press A to join", self.font_hud, (170, 170, 175), (x + bw // 2, by + 120), shadow=False)
+                self.text("Pritisni A", self.font_hud, (170, 170, 175), (x + bw // 2, by + 120), shadow=False)
 
     def render_lobby(self, key, joined, n_pads, x0, by, bw, bh, gap):
         bg = pygame.Surface((W, H)).convert()
@@ -4082,9 +4098,9 @@ class Game:
         screen, self.screen = self.screen, bg     # draw with the usual helpers, but into the cache
         self.dim(170)
         self.text("TANK ARENA", self.font_big, (240, 220, 120), (W // 2, 130))
-        self.text("Left stick drive   •   Right stick aim   •   RT / RB / A fire   •   LT / LB / X special", self.font_small, (200, 200, 200), (W // 2, 200))
-        ammo = "unlimited in races" if self.mode == 'race' else "grab the ammo crates to reload"
-        self.text(f"{MAX_AMMO} shells per tank - {ammo}", self.font_hud, (230, 200, 110), (W // 2, 236))
+        self.text("Leva palica: vožnja   •   Desna palica: merjenje   •   RT / RB / A: strel   •   LT / LB / X: posebno orožje", self.font_small, (200, 200, 200), (W // 2, 200))
+        ammo = "na dirki neomejeno" if self.mode == 'race' else "poberi zaboje s strelivom za polnjenje"
+        self.text(f"{MAX_AMMO} granat na tank - {ammo}", self.font_hud, (230, 200, 110), (W // 2, 236))
         labels = dict(key[1])
         for i in range(MAX_PLAYERS):
             x = x0 + i * (bw + gap)
@@ -4098,29 +4114,87 @@ class Game:
                 self.text(labels[i], self.font_tiny, (200, 200, 200), (rect.centerx, by + 190), shadow=False)
 
         if self.mode == 'versus':
-            self.text("MODE:  VERSUS  -  last tank standing", self.font_small, (240, 220, 120), (W // 2, 522))
+            self.text("NAČIN:  BOJ  -  zmaga zadnji preživeli tank", self.font_small, (240, 220, 120), (W // 2, 522))
         elif self.mode == 'coop':
-            self.text("MODE:  CO-OP  -  survive the undead together", self.font_small, (255, 120, 90), (W // 2, 522))
+            self.text("NAČIN:  SODELOVANJE  -  skupaj preživite nemrtve", self.font_small, (255, 120, 90), (W // 2, 522))
         else:
-            self.text("MODE:  RACE  -  jumps, drifts, and shells that only bump", self.font_small, (120, 210, 255), (W // 2, 522))
-        self.text("Y / TAB to switch mode", self.font_tiny, (170, 170, 175), (W // 2, 548), shadow=False)
-        self.text(f"{n_pads} controller{'s' if n_pads != 1 else ''} connected", self.font_tiny, (150, 150, 155), (W // 2, 568), shadow=False)
+            self.text("NAČIN:  DIRKA  -  skoki, drsenje in granate, ki le odbijajo", self.font_small, (120, 210, 255), (W // 2, 522))
+        self.text("Y / TAB zamenja način", self.font_tiny, (170, 170, 175), (W // 2, 548), shadow=False)
+        self.text(f"Povezani kontrolerji: {n_pads}", self.font_tiny, (150, 150, 155), (W // 2, 568), shadow=False)
         if joined:
-            msg = ("Press START to begin" if len(joined) > 1 or self.mode != 'versus'
-                   else "Press START for solo practice (2+ players for a match)")
+            msg = ("Pritisni START za začetek" if len(joined) > 1 or self.mode != 'versus'
+                   else "Pritisni START za vadbo (za tekmo sta potrebna vsaj 2 igralca)")
             self.text(msg, self.font_small, (255, 255, 255), (W // 2, 590))
-        self.text("Keyboard P1: WASD drive, Q/E aim, SPACE join+fire, F special, X leave   •   P2: arrows, , . aim, R-CTRL join+fire, / special, DEL leave   •   ENTER start",
+        self.text("Tipkovnica P1: WASD vožnja, Q/E merjenje, SPACE vstop+strel, F posebno, X izstop   •   P2: puščice, , . merjenje, R-CTRL vstop+strel, / posebno, DEL izstop   •   ENTER začetek",
                   self.font_tiny, (150, 150, 155), (W // 2, 630), shadow=False)
-        goal = {'versus': f"First to {WIN_SCORE} round wins", 'coop': "Wave N brings N ghouls",
-                'race': f"{RACE_LAPS} laps, first to {RACE_WIN_SCORE} race wins"}[self.mode]
-        quit_hint = "" if WEB else "   •   ESC quit"
-        self.text(f"{goal}   •   B leave   •   F11 fullscreen{quit_hint}",
+        goal = {'versus': f"Zmaga, kdor prvi dobi {WIN_SCORE} rund", 'coop': "Val N prinese N pošasti",
+                'race': f"{RACE_LAPS} krogov, zmaga, kdor prvi dobi {RACE_WIN_SCORE} dirke"}[self.mode]
+        quit_hint = "" if WEB else "   •   ESC izhod"
+        self.text(f"{goal}   •   B izstop   •   F11 celozaslonsko{quit_hint}",
                   self.font_hud, (150, 150, 155), (W // 2, 660), shadow=False)
         self.screen = screen
         return bg
 
+    def make_taunt_screen(self, kind):
+        """The boss that beat the tanks, large, with a gloat. Built once and drawn as one opaque blit."""
+        bg = pygame.Surface((W, H)).convert()
+        col = BOSS_COLORS[kind]
+        dark = (10, 8, 14)
+        bg.fill(dark)
+        cx, cy = 390, 380
+        glow = 0.65 if kind == 'spider' else 0.45     # her legs are dark
+        for r in range(520, 0, -8):    # glow behind the boss, opaque rings fading out
+            k = (1 - r / 520) ** 2 * glow
+            pygame.draw.circle(bg, [int(d + (c - d) * k) for c, d in zip(col, dark)], (cx, cy), r)
+        big = make_boss_sprites(kind, 9)
+        if kind == 'spider':
+            for i in range(14):    # a web stretched across the corner behind her
+                a = math.pi / 2 * i / 13
+                pygame.draw.line(bg, (70, 70, 82), (0, 0), (math.cos(a) * 640, math.sin(a) * 640), 2)
+            for r in range(80, 640, 80):
+                pts = [(math.cos(math.pi / 2 * i / 13) * r, math.sin(math.pi / 2 * i / 13) * r) for i in range(14)]
+                pygame.draw.lines(bg, (70, 70, 82), False, pts, 2)
+        elif kind == 'witch':
+            pygame.draw.circle(bg, (235, 230, 190), (cx + 60, cy - 90), 200)    # full moon
+            pygame.draw.circle(bg, (215, 210, 170), (cx + 10, cy - 140), 36)
+            pygame.draw.circle(bg, (215, 210, 170), (cx + 140, cy - 40), 24)
+        pygame.draw.ellipse(bg, (5, 4, 8), (cx - 230, cy + 190, 460, 70))       # shadow
+        if kind == 'snake':
+            coil = []    # the body coiled up on the ground around her, drawn back to front
+            for i, img in enumerate(big['segs']):
+                a = 1.3 + i * 0.6
+                rr = 1 - 0.3 * i / len(big['segs'])
+                img = pygame.transform.smoothscale(img, (img.get_width() * 2 // 3, img.get_height() * 2 // 3))
+                coil.append((cy + 150 + math.sin(a) * 70 * rr, cx + math.cos(a) * 230 * rr, img))
+            for y, x, img in sorted(coil, key=lambda c: c[0]):
+                blit_center(bg, img, x, y)
+        blit_center(bg, big[('base', 1)], cx, cy)
+        if kind == 'knight':
+            blit_center(bg, big['sword'], cx + 250, cy - 10)
+        elif kind == 'witch':
+            for x, y in ((cx - 260, cy + 180), (cx + 230, cy + 220)):
+                blit_center(bg, big['cat'], x, y)
+
+        tx = 960
+        font = pygame.font.Font(None, 52)
+        self.text(BOSS_NAMES[kind], self.font_med, col, (tx, 150), bg)
+        lines = random.choice(BOSS_TAUNTS[kind]).split("\n")
+        for i, line in enumerate(lines):
+            y = 300 - (len(lines) - 1) * 28 + i * 56
+            for dx, dy, c in ((3, 3, (0, 0, 0)), (0, 0, (255, 235, 200))):
+                img = font.render(("„" if i == 0 else "") + line + ("“" if i == len(lines) - 1 else ""), True, c)
+                bg.blit(img, img.get_rect(center=(tx + dx, y + dy)))
+        self.text("TANKI SO PADLI", self.font_small, (255, 110, 90), (tx, 450), bg)
+        total = sum(p.kills for p in self.players)
+        self.text(f"Dosežen val {self.wave}   •   uničenih pošasti: {total}", self.font_hud, (210, 210, 210), (tx, 490), bg)
+        return bg
+
     def draw(self):
-        if self.state == 'lobby':
+        if self.state == 'coopover' and self.taunt:
+            self.screen.blit(self.taunt, (0, 0))
+            if self.timer <= 0 and int(self.now * 2) % 2:
+                self.text("Pritisni A za nadaljevanje", self.font_small, (220, 220, 220), (960, 640))
+        elif self.state == 'lobby':
             self.draw_lobby()
         else:
             self.draw_world()

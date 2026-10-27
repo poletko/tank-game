@@ -141,7 +141,7 @@ g.update_tanks(1 / 60)
 assert me.mortar_aim is None and g.missiles, "releasing the button fires the mortar"
 g.missiles.clear()
 
-# co-op: a lone survivor gets one-shot packets; the tesla zaps a chain of touching ghouls
+# co-op: one-shot special packets keep coming; the tesla zaps a chain of touching ghouls
 g.to_lobby()
 g.mode = "coop"
 g.players = g.players[:2]
@@ -173,12 +173,18 @@ assert loner.hp == tanks.GHOUL_HP, "a ghoul not touching the chain is spared"
 assert lone.special is None, "co-op packets are one shot"
 g.packet_timer = 0
 g.update_packet(1 / 60)
-assert g.packet, "packets keep coming while one tank is left"
+assert g.packet, "packets keep coming"
 fallen.alive = True
 g.packet = None
 g.packet_timer = 0
 g.update_packet(1 / 60)
-assert g.packet is None, "no packets while two tanks are alive"
+assert g.packet, "packets come while several tanks are alive too"
+g.packet = None
+g.packet_timer = 0
+lone.special = fallen.special = "rocket"
+g.update_packet(1 / 60)
+assert g.packet is None, "no packets while every live tank holds a special"
+lone.special = fallen.special = None
 g.players[0].score = g.players[1].score = 0
 g.mode = "versus"
 g.players = [tanks.Player(i, pid) for i, pid in enumerate(fake)]
@@ -401,6 +407,19 @@ for _ in range(bs.max_hp):
 assert bs.dead and not g.bosses and len(g.pickups) == 3
 g.update_waves(1 / 60)
 assert a.hp == a.max_hp, "every cleared wave repairs the tanks"
+
+# losing to a boss shows its portrait with a taunt; losing to plain ghouls doesn't
+for kind in tanks.BOSS_KINDS + (None,):
+    a = open_field()
+    if kind:
+        make_boss(kind, *tanks.tile_center(20, 8))
+    a.alive = False
+    g.state, g.ending, g.taunt = "play", None, None
+    for _ in range(120):
+        g.update(1 / 60)
+    assert g.state == "coopover" and bool(g.taunt) == bool(kind), kind
+    g.draw()
+g.state = "play"
 print("bosses ok")
 
 # ---- race: 6 bots follow the centerline and shoot whoever is close

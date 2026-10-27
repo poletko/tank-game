@@ -1,6 +1,6 @@
 # Tank Arena
 
-A local multiplayer top-down tank shooter for Linux, Windows and the browser. Up to 6 players (any mix of controllers and the two keyboard slots) fight on one static screen.
+A local multiplayer top-down tank shooter for Linux, Windows and the browser. Up to 6 players (any mix of controllers and the two keyboard slots) fight on one static screen. The game's on-screen text is in Slovenian.
 
 ## Run
 **Browser:** open [poletko.github.io/tank-game](https://poletko.github.io/tank-game/) and click once to start (browsers only allow sound after a click). It runs best in Chrome or Edge. The first load takes a few seconds. Press F11 for fullscreen. Controllers work if you press a button on them after the page has loaded. The browser version is a bit lighter on effects (bushes don't sway) and may run slower than the desktop versions on older computers.
@@ -48,17 +48,19 @@ Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VER
 - Ghouls move at 60% of tank speed and chase the closest tank. Walkers go around walls and claw through bricks if they have to. Ghosts float straight through walls.
 - A ghoul's touch costs a tank 1 HP. Tanks have 5 HP in co-op, and there's no friendly fire.
 - Ammo refills at the start of each wave, crates still appear, and killed ghouls sometimes drop a +3 ammo box.
-- When only one tank is left standing (with 2+ players), special weapon packets start appearing for it. Each packet gives one shot of a special weapon, and a new one shows up a few seconds after it's used or picked up.
+- Special weapon packets keep appearing on the map. Each packet gives one shot of a special weapon to whoever drives over it first, and a new one shows up a few seconds after it's picked up or fades, as long as some tank has no special.
 - Every cleared wave fully repairs all surviving tanks. Fallen tanks come back at the next wave. When every tank is down the game ends and shows the wave you reached and each player's kills.
 
 ### Bosses
-Every third wave brings a boss along with its ghouls. A health bar at the top shows how it's doing. Bosses are bigger and faster than ghouls, take 25 hits, and aren't slowed by hits. Each has a ranged attack that only ever flies straight along a row or a column, never diagonally. Before it throws, the boss flashes and a red dashed line shows exactly where the attack will go, so get out of line. A killed boss drops three ammo boxes.
+Every third wave brings a boss along with its ghouls. A health bar at the top shows how it's doing. Bosses are bigger and faster than ghouls, take 17 hits, and aren't slowed by hits. Each has a ranged attack that only ever flies straight along a row or a column, never diagonally. Before it throws, the boss flashes and a red dashed line shows exactly where the attack will go, so get out of line. A killed boss drops three ammo boxes.
 1. **Wave 3, the Cursed Knight:** throws his sword, which flies out and comes back along the same line. He can't throw again until he's caught it.
 2. **Wave 6, the Spider Queen:** leaves sticky webs on every tile she walks over. Webs slow tanks to under half speed and fade after 15 s. She also spits web balls that pin a tank in place for a second.
 3. **Wave 9, the Great Snake:** long. Its body blocks tanks, and a shot anywhere on it counts. Spits venom.
 4. **Wave 12, the Witch:** flies on her broom over walls, keeps her distance and lines up with you. She lobs cats over walls; a cat lands, hisses for half a second, then explodes.
 
-After the witch the order starts again from the knight, with 15 more hits each time round.
+After the witch the order starts again from the knight, with 10 more hits each time round.
+
+If the tanks fall while a boss is still alive, that boss fills the screen and gloats (in Slovenian).
 
 ## Special weapons
 Fired with LT / LB / X (keyboard: F or `/`). An icon next to your tank shows the weapon and its recharge.
