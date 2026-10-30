@@ -75,7 +75,7 @@ assert crates > 0, "no ammo crate ever spawned"
 assert kills > 0, "no tank was ever destroyed"
 
 # ---- special weapons
-assert tanks.CRATE_RESPAWN == 9.0 and tanks.QUIZ_INTERVAL == 240.0
+assert tanks.CRATE_RESPAWN == 9.0 and tanks.QUIZ_INTERVAL == 180.0
 
 
 def open_arena():

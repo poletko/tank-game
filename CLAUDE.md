@@ -115,11 +115,11 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   the race below 120 FPS. They're only rotated live while airborne, because of the scaling.
 
 ## Math break
-- `quiz_clock` counts seconds in `countdown`/`play`. Once it passes `QUIZ_INTERVAL` (240 s), `update()` opens a
+- `quiz_clock` counts seconds in `countdown`/`play`. Once it passes `QUIZ_INTERVAL` (180 s), `update()` opens a
   `Quiz` at the next `at_break()`: lobby, roundover, matchover, coopover, or an empty co-op wave break. While
   `self.quiz` is set, `update()` only runs `update_quiz`, so the game is frozen. The clock resets when a question
   is answered correctly. The user asked for this: keep it mandatory and never open it mid-action.
-- `make_question()` returns `(text, answer, unit)` in Slovenian at the level of a finished 4th grade; answers must
+- `make_question()` returns `(text, answer, unit)` in Slovenian at the level of a finished 4th grade, weighted towards division and unit conversion (the user asked for this); answers must
   fit `QUIZ_DIGITS`. The smoke test checks 5000 random questions. Entry uses the pad's edge-triggered
   `up/down/left/right` buttons (derived from the stick and D-pad in `Pad.poll`), and keyboard digits come in as
   KEYDOWN events in `run()`.

@@ -90,11 +90,11 @@ BOSS_TAUNTS = {   # shown on the game over portrait when a boss wins
     'witch': ("Hi-hi-hi! Moje mucke\nvas lepo pozdravljajo.", "Mijav... BUM!\nHi-hi-hi!",
               "Iz vaših tankov\nbom skuhala juho!"),
 }
-BOSS_HP = 17
-BOSS_HP_GROWTH = 10         # extra hit points each time the bosses come round again
+BOSS_HP = 14
+BOSS_HP_GROWTH = 8          # extra hit points each time the bosses come round again
 BOSS_R = 19
-BOSS_SPEED = TANK_SPEED * 0.72
-BOSS_ATTACK_CD = 2.6        # seconds between ranged attacks
+BOSS_SPEED = TANK_SPEED * 0.66
+BOSS_ATTACK_CD = 3.0        # seconds between ranged attacks
 BOSS_WINDUP = 0.5           # the boss glows and a line shows where it will throw, so players can dodge
 BOSS_RANGE = 14 * T
 BOSS_ALIGN = 22             # ranged attacks fly only along a row or column: a tank must be this close to one
@@ -160,7 +160,7 @@ ASPHALT = (66, 68, 74)
 ORDINALS = ('1.', '2.', '3.', '4.', '5.', '6.')
 
 # math break
-QUIZ_INTERVAL = 240.0       # seconds of play between questions
+QUIZ_INTERVAL = 180.0       # seconds of play between questions
 QUIZ_DIGITS = 5
 QUIZ_TRIES = 3              # wrong answers before the solution is shown and a new question asked
 MAX_PLAYERS = 6
@@ -261,8 +261,10 @@ def fmt(n):
 def make_question():
     """A math question at the level of a finished 4th grade in Slovenia: (text, answer, unit)."""
     r = random.randint
-    kind = random.choice(('add', 'sub', 'table', 'mul', 'div', 'fraction', 'units', 'perimeter',
-                          'order', 'round', 'missing', 'word', 'word'))
+    # mostly division and unit conversion, the rest keeps the other topics fresh
+    kind = random.choice(('div', 'div', 'div', 'div', 'divword', 'divword', 'units', 'units', 'units', 'units',
+                          'units', 'add', 'sub', 'table', 'mul', 'fraction', 'perimeter', 'order', 'round',
+                          'missing', 'word'))
     if kind == 'add':
         a = r(1000, 8999)
         b = r(100, 9999 - a)
@@ -280,8 +282,25 @@ def make_question():
         return f"{fmt(a)} · {b} = ?", a * b, ""
     if kind == 'div':
         b = r(2, 9)
-        q = r(21, 9999 // b)
-        return f"{fmt(q * b)} : {b} = ?", q, ""
+        q = random.choice((r(21, 9999 // b), r(11, 99), r(101, 999)))
+        k = random.choice((1, 1, 10, 100))
+        if q * b * k > 99999:
+            k = 1
+        return random.choice(((f"{fmt(q * b * k)} : {b} = ?", q * k),
+                              (f"{fmt(q * b)} : □ = {fmt(q)}", b),
+                              (f"{fmt(b * k * 10)} : {k * 10} = ?", b)))[0:2] + ("",)
+    if kind == 'divword':
+        b, q = r(2, 9), r(3, 25)
+        return random.choice((
+            (f"{q * b} bonbonov razdelimo med {b} otrok. Koliko bonbonov dobi vsak?", q, ""),
+            (f"{q * b} jajc zložimo v škatle po {b}. Koliko škatel napolnimo?", q, ""),
+            (f"Vrv dolgo {q * b} m razrežemo na {b} enakih kosov. Kako dolg je en kos?", q, "m"),
+            (f"{b} enakih zvezkov stane {q * b} €. Koliko stane en zvezek?", q, "€"),
+            (f"Kolesar v {b} urah prevozi {q * b} km. Koliko km prevozi v eni uri?", q, "km"),
+            (f"Kolikokrat gre {b} v {q * b}?", q, ""),
+            (f"Koliko je polovica od {2 * q * b}?", q * b, ""),
+            (f"Koliko je četrtina od {4 * q * b}?", q * b, ""),
+        ))
     if kind == 'fraction':
         d = r(2, 10)
         n = d * r(2, 12)
@@ -290,14 +309,30 @@ def make_question():
         a, b = r(2, 9), r(11, 99)
         return random.choice((
             (f"{a} m {b} cm = ? cm", a * 100 + b, "cm"),
+            (f"{a * 100} cm = ? m", a, "m"),
+            (f"{a} m = ? dm", a * 10, "dm"),
+            (f"{a * 10} mm = ? cm", a, "cm"),
+            (f"{a * 1000} m = ? km", a, "km"),
+            (f"{a} km {b * 10} m = ? m", a * 1000 + b * 10, "m"),
+            (f"{a} m = ? mm", a * 1000, "mm"),
             (f"{a} kg = ? g", a * 1000, "g"),
+            (f"{a * 1000} g = ? kg", a, "kg"),
             (f"{a} kg {b * 10} g = ? g", a * 1000 + b * 10, "g"),
+            (f"{a} dag = ? g", a * 10, "g"),
+            (f"{a * 100} dag = ? kg", a, "kg"),
+            (f"{a} t = ? kg", a * 1000, "kg"),
             (f"{a} l {b % 10} dl = ? dl", a * 10 + b % 10, "dl"),
+            (f"{a * 10} dl = ? l", a, "l"),
+            (f"{a} l = ? ml", a * 1000, "ml"),
+            (f"{a} hl = ? l", a * 100, "l"),
             (f"{a % 4 + 1} h {b % 60} min = ? min", (a % 4 + 1) * 60 + b % 60, "min"),
-            (f"{a} km = ? m", a * 1000, "m"),
-            (f"{a} dm = ? cm", a * 10, "cm"),
-            (f"{a} cm = ? mm", a * 10, "mm"),
+            (f"{a * 60} min = ? h", a, "h"),
+            (f"{a} min = ? s", a * 60, "s"),
+            (f"{a * 60} s = ? min", a, "min"),
+            (f"{a} dni = ? h", a * 24, "h"),
+            (f"{a * 24} h = ? dni", a, "dni"),
             (f"{a} € {b} centov = ? centov", a * 100 + b, "centov"),
+            (f"{a * 100} centov = ? €", a, "€"),
         ))
     if kind == 'perimeter':
         a, b = r(2, 20), r(2, 20)

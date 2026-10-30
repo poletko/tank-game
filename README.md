@@ -52,7 +52,7 @@ Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VER
 - Every cleared wave fully repairs all surviving tanks. Fallen tanks come back at the next wave. When every tank is down the game ends and shows the wave you reached and each player's kills.
 
 ### Bosses
-Every third wave brings a boss along with its ghouls. A health bar at the top shows how it's doing. Bosses are bigger and faster than ghouls, take 17 hits, and aren't slowed by hits. Each has a ranged attack that only ever flies straight along a row or a column, never diagonally. Before it throws, the boss flashes and a red dashed line shows exactly where the attack will go, so get out of line. A killed boss drops three ammo boxes.
+Every third wave brings a boss along with its ghouls. A health bar at the top shows how it's doing. Bosses are bigger and faster than ghouls, take 14 hits, and aren't slowed by hits. Each has a ranged attack that only ever flies straight along a row or a column, never diagonally. Before it throws, the boss flashes and a red dashed line shows exactly where the attack will go, so get out of line. A killed boss drops three ammo boxes.
 1. **Wave 3, the Cursed Knight:** throws his sword, which flies out and comes back along the same line. He can't throw again until he's caught it.
 2. **Wave 6, the Spider Queen:** leaves sticky webs on every tile she walks over. Webs slow tanks to under half speed and fade after 15 s. She also spits web balls that pin a tank in place for a second.
 3. **Wave 9, the Great Snake:** long. Its body blocks tanks, and a shot anywhere on it counts. Spits venom.
@@ -79,7 +79,7 @@ The third mode in the lobby. Smaller, faster tanks race around a randomly genera
 - Cutting across the grass doesn't count as progress. A tank that stays far off the track for 2 s is put back on it.
 
 ## Math break
-After every 4 minutes of play, a math question appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian: adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems.
+After every 3 minutes of play, a math question appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian. Most are about division (sums, missing divisors, word problems) and converting units of length, mass, volume, time and money; the rest cover adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems.
 - Any player can answer. The answer goes into five digit boxes: stick or D-pad **up/down** changes the selected digit, **left/right** moves between digits, and **A** or **START** submits. On the keyboard you can also type the digits, use Backspace, and press Enter.
 - The game stays frozen until the answer is right. After 3 wrong tries the solution is shown and a new question is asked.
 
