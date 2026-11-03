@@ -422,6 +422,126 @@ for kind in tanks.BOSS_KINDS + (None,):
 g.state = "play"
 print("bosses ok")
 
+# ---- Santa: one player flies Santa, the others hunt him; beaten, he comes back with 5 more elves each time
+g.to_lobby()
+g.mode = "santa"
+g.players = [tanks.Player(0, fake[0])]
+g.pads[fake[0]].pressed = {"start"}
+g.update(1 / 60)
+assert g.state == "lobby", "Santa needs at least two players"
+g.pads[fake[0]].pressed = set()
+g.players = [tanks.Player(i, pid) for i, pid in enumerate(fake[:3])]
+g.santa_player = None
+g.start_match()
+first = g.santa_player
+hunters = [p for p in g.players if p is not first]
+assert first.tank is None and all(p.tank.hp == tanks.COOP_TANK_HP for p in hunters)
+for p in g.players:
+    g.pads[p.pad_id].move, g.pads[p.pad_id].held, g.pads[p.pad_id].pressed, g.pads[p.pad_id].aim = (0, 0), set(), set(), None
+while g.santa is None or g.santa.emerge > 0:
+    g.update(1 / 60)
+b = g.santa
+assert g.wave == 1 and g.wave_to_spawn == 0, "the first round is Santa alone"
+assert b.hp == tanks.SANTA_HP + tanks.SANTA_HP_PER_TANK * 2
+
+
+
+def walled_field():
+    g.arena.grid = [[tanks.STEEL if r in (0, tanks.ROWS - 1) or c in (0, tanks.COLS - 1) else tanks.EMPTY
+                     for c in range(tanks.COLS)] for r in range(tanks.ROWS)]
+    g.arena.brick_hp = {}
+    g.arena.ground = None
+    g.flow = None
+
+
+# he flies over walls, steered by his player's pad
+g.arena.grid = [[tanks.STEEL] * tanks.COLS for _ in range(tanks.ROWS)]
+spad = g.pads[first.pad_id]
+b.x, b.y = 300, 300
+spad.move = (1.0, 0.0)
+for _ in range(30):
+    g.update_santa(1 / 60)
+assert abs(b.x - (300 + tanks.SANTA_SPEED * 0.5)) < 2 and b.y == 300, (b.x, b.y)
+spad.move = (0, 0)
+
+# hold fire to walk the landing circle out, release to throw: the gift flies over steel and blows up the tank
+walled_field()
+for r in range(tanks.ROWS):
+    g.arena.grid[r][12] = tanks.STEEL
+a = hunters[0].tank
+a.x, a.y, a.invuln = 400, 300, 0
+b.x, b.y, b.cool = 650, 300, 0
+spad.aim = math.pi
+spad.held = {"fire"}
+while b.throw is None or b.throw < 250:
+    g.update_santa(1 / 60)
+spad.held = set()
+g.update_santa(1 / 60)
+assert b.throw is None and g.boss_shots and g.boss_shots[0].kind == "gift"
+hp = a.hp
+for _ in range(240):
+    g.update_boss_shots(1 / 60)
+assert a.hp == hp - 1 and not g.boss_shots, "the gift should land on the tank and explode"
+spad.aim = None
+
+# beaten: elves and gifts vanish, tanks get repaired, and he's back with 5 elves, then 10, every kind each time
+hunters[1].tank.alive = False
+a.hp = 1
+for wave, elves in ((2, 5), (3, 10)):
+    for _ in range(g.santa.max_hp):
+        g.hit_boss(g.santa, hunters[0], g.santa.x, g.santa.y)
+    assert g.santa is None and not g.bosses and not g.ghouls and a.hp == a.max_hp
+    g.state = "play"
+    while g.wave < wave or g.wave_to_spawn > 0:
+        g.update(1 / 60)
+        if not hunters[0].tank.alive:
+            raise AssertionError("the elves should not win this fast")
+    assert all(p.tank.alive for p in hunters), "destroyed tanks come back for the next round"
+    assert len(g.ghouls) == elves, (wave, len(g.ghouls))
+    assert {gh.kind for gh in g.ghouls} == set(tanks.ELF_KINDS)
+    assert all(gh.max_hp == tanks.ELF_STATS[gh.kind][0] for gh in g.ghouls)
+    g.draw()
+    if shots and wave == 3:
+        pygame.image.save(g.screen, os.path.join(shots, "santa.png"))
+
+# Santa wins once every tank is gone: his player gets the credit, and the taunt screen shows
+kills = first.kills
+for p in hunters:
+    g.kill(p.tank)
+assert first.kills == kills + 2
+for _ in range(120):
+    g.update(1 / 60)
+assert g.state == "coopover" and g.taunt
+g.draw()
+if shots:
+    pygame.image.save(g.screen, os.path.join(shots, "santa_taunt.png"))
+
+# the next match, the next player is Santa
+g.to_lobby()
+g.start_match()
+assert g.santa_player is g.players[(g.players.index(first) + 1) % len(g.players)]
+
+# and a stretch with random input, for crashes
+t0, frames = time.time(), 0
+for i in range(60 * 90):
+    for p in g.players:
+        pad = g.pads[p.pad_id]
+        pad.move = (random.uniform(-1, 1), random.uniform(-1, 1))
+        pad.aim = random.uniform(-3.2, 3.2)
+        t = p.tank
+        if t and t.alive and g.santa:
+            pad.aim = math.atan2(g.santa.y - t.y, g.santa.x - t.x)
+        pad.held = {"fire"} if random.random() < 0.7 else set()
+        pad.pressed = {"fire2"} if random.random() < 0.05 else set()
+    g.update(1 / 60)
+    g.draw()
+    frames += 1
+    if g.state == "coopover":
+        break
+fps = frames / (time.time() - t0)
+print(f"santa: frames={frames} fps={fps:.0f} round={g.wave} santa kills={g.santa_player.kills}")
+print("santa ok")
+
 # ---- race: 6 bots follow the centerline and shoot whoever is close
 g.to_lobby()
 g.mode = "race"
@@ -519,6 +639,13 @@ for _ in range(5000):
     text, ans, unit = tanks.make_question()
     assert isinstance(ans, int) and 0 <= ans < 10 ** tanks.QUIZ_DIGITS, (text, ans)
     assert len(g.wrap(text, g.font_med, 900)) <= 3, text
+for text, right, wrong in tanks.ESTIMATES:
+    assert len(wrong) >= 3 and right not in wrong and len(set(wrong)) == len(wrong), text
+    assert len(g.wrap(text, g.font_med, 900)) <= 2, text
+    assert g.font_med.size("d)  " + max(wrong + (right,), key=len))[0] < 380, text
+for _ in range(200):
+    text, options, ans = tanks.make_estimate()
+    assert len(options) == 4 and len(set(options)) == 4 and 0 <= ans < 4
 g.state, g.ending = "play", None
 g.quiz_clock = tanks.QUIZ_INTERVAL + 1
 g.update(1 / 60)
@@ -537,6 +664,7 @@ def press(*names):
 
 
 timer = g.timer
+q.kinds = ["num", "choice", "num"]   # fixed, so both kinds get tested
 press("a")   # 00000 is never the answer to these questions... unless it is
 if q.answer != 0:
     assert g.quiz and q.tries == 1 and g.timer == timer, "a wrong answer keeps the game frozen"
@@ -549,12 +677,29 @@ for i, d in enumerate(f"{q.answer:0{tanks.QUIZ_DIGITS}d}"):   # dial the answer 
         press("up")
 press("a")
 assert q.solved > 0
+for _ in range(120):
+    g.update(1 / 60)
+assert g.quiz is q and q.done == 1 and q.options, "the second question is multiple choice"
+wrong = (q.answer + 1) % 4
+while q.choice != wrong:
+    press("right" if (q.choice ^ wrong) & 1 else "down")
+press("a")
+assert q.options and q.tries == 1 and wrong in q.wrong
+q.type_digit(q.answer + 1)   # keyboard 1-4
+assert q.choice == q.answer
+press("a")
+assert q.solved > 0
 g.draw()
 if shots:
     pygame.image.save(g.screen, os.path.join(shots, "quiz.png"))
 for _ in range(120):
     g.update(1 / 60)
-assert g.quiz is None and g.quiz_clock == 0, "solving resets the 5 minute clock"
+assert q.done == 2 and not q.options
+q.digits = [int(c) for c in f"{q.answer:0{tanks.QUIZ_DIGITS}d}"]
+press("a")
+for _ in range(120):
+    g.update(1 / 60)
+assert g.quiz is None and g.quiz_clock == 0, "solving all questions resets the clock"
 
 # ---- browser drawing path: bushes baked into the ground still hide what's under them, decals included
 g.to_lobby()

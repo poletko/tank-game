@@ -54,7 +54,7 @@ Always run the smoke test after changes. For visual changes, also look at the sc
      pad pressing A takes over a player whose pad disconnected (`claim_orphans`).
 
 ## Co-op mode
-- `Game.mode` is `'versus'`, `'coop'` or `'race'`. It's cycled in the lobby by the Y button (the `'y'` pad button) or Tab (handled as a KEYDOWN event, because both keyboard pads would otherwise toggle it twice).
+- `Game.mode` is `'versus'`, `'coop'`, `'race'` or `'santa'`. It's cycled in the lobby by the Y button (the `'y'` pad button) or Tab (handled as a KEYDOWN event, because both keyboard pads would otherwise toggle it twice).
 - Tuning lives in the `COOP_*`, `GHOUL_*`, `WAVE_BREAK` and `AMMO_DROP*` constants. The user specified these rules, so keep them unless asked: wave N spawns N ghouls; ghouls take 5 hits, regenerate 1 hit per 10 s, slow to 50% for 3 s per hit, move at 60% of tank speed and chase the closest tank.
 - `Ghoul` is the entity. The logic is in `update_waves` → `start_wave` / `spawn_ghoul`, then `update_ghouls`, `hit_ghoul`, `kill_ghoul` and `update_pickups`.
 - Pathing: `compute_flow` is a Dijkstra distance field from all live tanks (bricks cost 6, steel and water are blocked), recomputed every 0.25 s. Walkers step to the downhill neighbour tile (`ghoul_step_target`) and claw bricks in the way. Ghosts ignore walls and are drawn above bushes.
@@ -70,10 +70,28 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 - Knight: the sword flies out and back on the same line (`shot.back`); `boss.armed` blocks throwing until it returns.
   Spider: `self.webs` maps tiles to time left; tanks on a web move at `WEB_SLOW`, and web balls set `Tank.stuck`.
   Snake: `trail` keeps head positions every `SNAKE_TRAIL_STEP` px; `segs` (head first) are solid for tanks and
-  count for bullets, `targets()` and blasts (deduplicated per boss). Witch: flies like a ghost, lines up via
+  count for bullets, `targets()` and blasts (deduplicated per boss). Witch (flying, like Santa: `FLYING_BOSSES`): flies like a ghost, lines up via
   `witch_target`, and her cats arc over walls and go off through `explode(x, y, r, None)`, which hurts tanks.
 - Losing with a boss alive (or pending) sets `self.taunt` = `make_taunt_screen(kind)`: an opaque full-screen portrait
   (`make_boss_sprites(kind, 9)`) with a random line from `BOSS_TAUNTS`, drawn instead of the world in `coopover`.
+
+## Santa mode
+- `mode == 'santa'` reuses the co-op machinery (tank HP, no friendly fire, `targets()`, crates, packets, `coopover`).
+  `start_match` picks `self.santa_player` with `pick_santa` (players take turns); that player has no tank. Needs
+  2+ players (`update_lobby` refuses to start otherwise).
+- The user asked for these rules: Santa is player-controlled, flies like the witch, throws exploding gifts and
+  laughs. Each time the tanks beat him he returns with `SANTA_HELPERS` (5) more elves, until he wins (all tanks
+  destroyed). The game over screen shows a laughing, classic red-and-white Santa (`make_santa_portrait`).
+- Santa is a `Boss` of kind `'santa'` in `self.bosses` and `self.santa`, so bullets, specials and the health bar
+  work as for bosses. `update_bosses` doesn't run in this mode; `update_santa` moves him from his pad. Fire is
+  hold-to-aim like the mortar (`Boss.throw` grows by `SANTA_AIM_SPEED`), and release calls `santa_throw`. Gifts are
+  `BossShot('gift')`, lobbed like the witch's cats and going off through `explode(..., None)`. Unlike AI bosses, his
+  throws can be diagonal.
+- Rounds: `update_santa_round` / `start_santa_round` use `wave`, `wave_break` and `wave_to_spawn` as in co-op.
+  `kill_boss` on Santa calls `santa_beaten` (elves and gifts vanish, tanks repaired). Every tank killed in this mode
+  counts for `santa_player.kills` and makes him laugh (`santa_laugh`, rate-limited by `SANTA_LAUGH_GAP`).
+- Elves are `Ghoul`s with kinds from `ELF_KINDS`, drawn in `make_ghoul_sprites` (smaller, `N = 28`); hits and speed
+  come from `ELF_STATS` through `Ghoul.max_hp` and `Ghoul.speed`.
 
 ## Special weapons
 - `Tank.special` is `'rocket'`, `'mortar'` or `'tesla'`. `special_recharge` is 0 for co-op packets (one shot, then
@@ -123,6 +141,10 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   fit `QUIZ_DIGITS`. The smoke test checks 5000 random questions. Entry uses the pad's edge-triggered
   `up/down/left/right` buttons (derived from the stick and D-pad in `Pad.poll`), and keyboard digits come in as
   KEYDOWN events in `run()`.
+- A break asks `QUIZ_QUESTIONS` (3) questions, at least one a multiple choice estimate (the user asked for this,
+  with at least 4 options): `make_estimate()` picks from `ESTIMATES` (question, right answer, wrong answers).
+  `Quiz.options` is set for those; then `answer`/`choice` are option indices, picked on a 2x2 grid or with keys 1-4,
+  with `QUIZ_CHOICE_TRIES` tries. `q.done` counts solved questions; the clock resets after the last one.
 
 ## Browser version (pygbag)
 - pygbag runs CPython and pygame-ce compiled to WebAssembly. `WEB` (`sys.platform == 'emscripten'`) gates the few

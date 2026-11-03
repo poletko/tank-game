@@ -42,7 +42,7 @@ F11 toggles fullscreen. ESC returns to the lobby, or quits from the lobby.
 - Controllers can be plugged in at any time. If one disconnects mid-match, press A on any free pad to take over that player.
 
 ## Co-op mode
-Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VERSUS, CO-OP and RACE. All the tanks team up against waves of mummies, zombies, vampires and ghosts.
+Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VERSUS, CO-OP, RACE and SANTA. All the tanks team up against waves of mummies, zombies, vampires and ghosts.
 - Wave 1 has one ghoul, and each cleared wave adds one more (wave N brings N ghouls).
 - A ghoul takes 5 hits to kill and regenerates 1 hit every 10 s. Each hit slows it to half speed for 3 s.
 - Ghouls move at 60% of tank speed and chase the closest tank. Walkers go around walls and claw through bricks if they have to. Ghosts float straight through walls.
@@ -58,7 +58,7 @@ Every third wave brings a boss along with its ghouls. A health bar at the top sh
 3. **Wave 9, the Great Snake:** long. Its body blocks tanks, and a shot anywhere on it counts. Spits venom.
 4. **Wave 12, the Witch:** flies on her broom over walls, keeps her distance and lines up with you. She lobs cats over walls; a cat lands, hisses for half a second, then explodes.
 
-After the witch the order starts again from the knight, with 10 more hits each time round.
+After the witch the order starts again from the knight, with 8 more hits each time round.
 
 If the tanks fall while a boss is still alive, that boss fills the screen and gloats (in Slovenian).
 
@@ -78,8 +78,17 @@ The third mode in the lobby. Smaller, faster tanks race around a randomly genera
 - **The Ghost Rider** haunts every race on a burning motorcycle, a bit slower than a tank at full speed. Get stuck behind him and he lashes back with a flaming chain that spins you round and kills your speed. One shell banishes him, but he rides again 3 s later. Overtake fast, or shoot first.
 - Cutting across the grass doesn't count as progress. A tank that stays far off the track for 2 s is put back on it.
 
+## Santa mode
+The fourth mode in the lobby, for 2 or more players. One player flies **Santa** (Božiček), and everyone else hunts him with tanks. Players take turns at being Santa, one match each, and the countdown shows whose turn it is.
+- Santa flies over walls, water and bushes like the witch. Steer him with the left stick (keyboard: as for driving).
+- He throws exploding gifts: hold fire and a red circle walks out in the direction he's aiming (right stick, or the keyboard turret keys), then let go to throw. The gift arcs over walls, ticks for a moment and blows up, damaging every tank in the blast and the bricks around it. The arrow in Santa's player colour shows where he's aiming.
+- He laughs "HO HO HO!" now and then, and every time a tank blows up. His HUD slot shows his health and how many tanks he has destroyed.
+- The tanks have 5 health and no friendly fire, as in co-op, and they can pick up ammo crates and special weapons.
+- The first round is Santa alone. Every time the tanks beat him, his elves vanish, the tanks are repaired, destroyed tanks come back, and after a short break Santa returns with **5 more elves** than before: 5, then 10, then 15... There are five kinds of elf: the classic green one with a bell on his hat, the candy-cane elf (fast), the frost elf in a fur hood (3 hits), the gift elf, and the bearded gnome (slow, but takes 4 hits). The rest take 2 hits. Like ghouls, elves chase the nearest tank and claw through bricks.
+- It goes on until Santa wins by destroying every tank. Then a big laughing Santa fills the screen and gloats.
+
 ## Math break
-After every 3 minutes of play, a math question appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian. Most are about division (sums, missing divisors, word problems) and converting units of length, mass, volume, time and money; the rest cover adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems.
+After every 3 minutes of play, a math break with 3 questions appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian. Most are about division (sums, missing divisors, word problems) and converting units of length, mass, volume, time and money; the rest cover adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems. At least one question per break is a multiple choice estimate ("About how long is one step?" with four options in different units). Pick an option with the stick, D-pad or arrows (or keys 1-4) and confirm with A or Enter. A number question allows 3 tries and a multiple choice question 2, then the answer is shown and a new question comes in its place.
 - Any player can answer. The answer goes into five digit boxes: stick or D-pad **up/down** changes the selected digit, **left/right** moves between digits, and **A** or **START** submits. On the keyboard you can also type the digits, use Backspace, and press Enter.
 - The game stays frozen until the answer is right. After 3 wrong tries the solution is shown and a new question is asked.
 

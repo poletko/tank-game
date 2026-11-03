@@ -4,13 +4,14 @@
 
 Left stick: drive   Right stick: aim turret   RT / RB / A: fire   LT / LB / X: special weapon
 START: begin match / pause   B: leave lobby   BACK (in pause): quit to lobby
-Y / TAB in the lobby cycles VERSUS, CO-OP (tanks vs waves of undead) and RACE.
+Y / TAB in the lobby cycles VERSUS, CO-OP (tanks vs waves of undead), RACE and SANTA (one player flies Santa
+and throws exploding gifts, the others hunt him with tanks).
 Keyboard (two players): P1 WASD + Q/E turret + SPACE fire + F special + X leave,
 P2 arrows + ,/. turret + RCTRL fire + / special + DELETE leave
 ENTER starts / pauses. Up to 6 players in total.
 F11 toggles fullscreen, ESC returns to lobby / quits.
-Every 4 minutes of play a math question (Slovenian, end of 4th grade) appears at the next break between
-rounds or waves. Stick/D-pad up/down changes a digit, left/right picks the digit, A or START answers.
+Every 3 minutes of play a math break with 3 questions (Slovenian, end of 4th grade) appears at the next break
+between rounds or waves. Stick/D-pad up/down changes a digit, left/right picks the digit, A or START answers.
 """
 import asyncio
 import heapq
@@ -74,12 +75,21 @@ WAVE_BREAK = 4.0
 AMMO_DROP_CHANCE = 0.35
 AMMO_DROP = 3
 GHOUL_COLORS = {'mummy': (215, 200, 155), 'zombie': (100, 160, 70), 'vampire': (160, 25, 40), 'ghost': (220, 230, 255)}
+# Santa's elves walk and fight like ghouls: (hits, speed factor) per kind
+ELF_KINDS = ('elf', 'candy', 'frost', 'giftelf', 'gnome')
+ELF_STATS = {'elf': (2, 1.0), 'candy': (2, 1.25), 'frost': (3, 0.9), 'giftelf': (2, 1.05), 'gnome': (4, 0.8)}
+ELF_SPEED = TANK_SPEED * 0.62
+GHOUL_COLORS.update({'elf': (60, 170, 80), 'candy': (220, 50, 60), 'frost': (140, 195, 240), 'giftelf': (240, 195, 60),
+                     'gnome': (70, 100, 180)})
 
 # co-op bosses: one comes with every BOSS_EVERY-th wave, in BOSS_KINDS order, tougher each time round
 BOSS_EVERY = 3
 BOSS_KINDS = ('knight', 'spider', 'snake', 'witch')
-BOSS_NAMES = {'knight': "PREKLETI VITEZ", 'spider': "PAJKOVA KRALJICA", 'snake': "VELIKA KAČA", 'witch': "ČAROVNICA"}
-BOSS_COLORS = {'knight': (160, 120, 230), 'spider': (150, 50, 170), 'snake': (110, 190, 70), 'witch': (150, 230, 100)}
+BOSS_NAMES = {'knight': "PREKLETI VITEZ", 'spider': "PAJKOVA KRALJICA", 'snake': "VELIKA KAČA", 'witch': "ČAROVNICA",
+              'santa': "BOŽIČEK"}
+BOSS_COLORS = {'knight': (160, 120, 230), 'spider': (150, 50, 170), 'snake': (110, 190, 70), 'witch': (150, 230, 100),
+               'santa': (225, 45, 50)}
+FLYING_BOSSES = ('witch', 'santa')   # over walls, drawn above bushes
 BOSS_TAUNTS = {   # shown on the game over portrait when a boss wins
     'knight': ("Tristo let prekletstva,\nvi pa ste le pločevinke.", "Moj meč se vedno vrne.\nVi se ne boste.",
                "Na kolena pred\nPrekletim vitezom!"),
@@ -89,6 +99,8 @@ BOSS_TAUNTS = {   # shown on the game over portrait when a boss wins
               "Dolga sssem, lačna sssem,\nvi pa ssste bili kosssilo."),
     'witch': ("Hi-hi-hi! Moje mucke\nvas lepo pozdravljajo.", "Mijav... BUM!\nHi-hi-hi!",
               "Iz vaših tankov\nbom skuhala juho!"),
+    'santa': ("Letos ste bili\nzelo, zelo poredni!", "Za vas ni daril,\nsamo premog in eksplozije!",
+              "Vesel božič,\npločevinke!", "Moji škratje\nvas lepo pozdravljajo!"),
 }
 BOSS_HP = 14
 BOSS_HP_GROWTH = 8          # extra hit points each time the bosses come round again
@@ -109,6 +121,22 @@ SNAKE_TRAIL_STEP = 3        # px between remembered head positions; segments sit
 CAT_SPEED = 320
 CAT_FUSE = 0.5              # a landed cat hisses this long, then explodes
 CAT_RADIUS = 58
+
+# Santa mode: one player flies Santa and throws exploding gifts at the tanks; every time they beat him, he comes back
+# with SANTA_HELPERS more elves, until he wins
+SANTA_HP = 6                # plus SANTA_HP_PER_TANK for every tank hunting him
+SANTA_HP_PER_TANK = 6
+SANTA_SPEED = 140
+SANTA_HELPERS = 5
+SANTA_ELF_GAP = 0.3         # seconds between elves arriving
+SANTA_THROW_CD = 0.8
+SANTA_THROW_MIN, SANTA_THROW_MAX = 70, 420
+SANTA_AIM_SPEED = 380       # how fast the landing circle walks out while the throw button is held
+SANTA_LAUGH_GAP = 3.0       # he laughs at most this often (except when a tank blows up)
+GIFT_SPEED = 360
+GIFT_FUSE = 0.6
+GIFT_RADIUS = 55
+GIFT_LOOKS = (((220, 40, 50), (245, 205, 70)), ((50, 140, 225), (230, 50, 60)), ((60, 175, 80), (245, 205, 70)))
 
 # special weapons: lone co-op survivors find one-shot packets, the last-placed versus player gets a rechargeable one
 SPECIALS = ('rocket', 'mortar', 'tesla')
@@ -163,6 +191,8 @@ ORDINALS = ('1.', '2.', '3.', '4.', '5.', '6.')
 QUIZ_INTERVAL = 180.0       # seconds of play between questions
 QUIZ_DIGITS = 5
 QUIZ_TRIES = 3              # wrong answers before the solution is shown and a new question asked
+QUIZ_CHOICE_TRIES = 2       # the same for multiple choice, where guessing is easier
+QUIZ_QUESTIONS = 3          # questions per break
 MAX_PLAYERS = 6
 
 PLAYER_COLORS = [
@@ -372,27 +402,98 @@ def make_question():
     ))
 
 
+# multiple choice estimates: (question, right answer, wrong answers); 3 of the wrong ones are shown
+ESTIMATES = (
+    ("Približno koliko je dolg en korak?", "1 m", ("1 cm", "1 dm", "10 m", "1 km")),
+    ("Približno koliko je dolg svinčnik?", "15 cm", ("15 mm", "15 m", "150 m", "15 km")),
+    ("Približno koliko je visoka učilnica?", "3 m", ("3 cm", "3 dm", "30 m", "3 km")),
+    ("Približno koliko je širok noht na mezincu?", "1 cm", ("1 mm", "1 dm", "1 m", "10 m")),
+    ("Približno koliko je dolgo nogometno igrišče?", "100 m", ("100 cm", "100 mm", "10 km", "100 km")),
+    ("Približno koliko je visok odrasel človek?", "170 cm", ("17 cm", "170 mm", "17 m", "170 m")),
+    ("Približno koliko je debel zvezek?", "5 mm", ("5 cm", "5 dm", "5 m", "50 cm")),
+    ("Približno koliko poti narediš peš v 15 minutah?", "1 km", ("1 m", "10 m", "1 dm", "100 km")),
+    ("Približno koliko je dolga šolska klop?", "120 cm", ("12 cm", "12 mm", "12 m", "120 m")),
+    ("Približno koliko tehta jabolko?", "200 g", ("2 g", "2 kg", "20 kg", "200 kg")),
+    ("Približno koliko tehta učenec 4. razreda?", "35 kg", ("35 g", "350 g", "350 kg", "3 t")),
+    ("Približno koliko tehta osebni avtomobil?", "1 t", ("1 kg", "10 kg", "100 g", "100 t")),
+    ("Približno koliko tehta list papirja?", "5 g", ("5 kg", "500 g", "50 kg", "5 t")),
+    ("Približno koliko tehta liter mleka?", "1 kg", ("1 g", "10 g", "10 kg", "1 t")),
+    ("Približno koliko tehta slon?", "5 t", ("5 kg", "50 kg", "50 g", "500 g")),
+    ("Približno koliko tehta šolska torba s knjigami?", "5 kg", ("5 g", "50 g", "500 kg", "5 t")),
+    ("Približno koliko vode gre v kozarec?", "2 dl", ("2 ml", "2 l", "20 l", "2 hl")),
+    ("Približno koliko vode gre v vedro?", "10 l", ("10 ml", "10 dl", "1 dl", "10 hl")),
+    ("Približno koliko vode gre v kopalno kad?", "200 l", ("200 ml", "2 dl", "2 l", "20 ml")),
+    ("Približno koliko zdravila gre na čajno žličko?", "5 ml", ("5 l", "5 dl", "50 l", "5 hl")),
+    ("Približno koliko mleka je v plastenki iz trgovine?", "1 l", ("1 ml", "10 ml", "100 l", "1 hl")),
+    ("Približno koliko časa traja šolska ura?", "45 min", ("45 s", "45 h", "4 dni", "4 s")),
+    ("Približno koliko časa si umivaš zobe?", "2 min", ("2 s", "2 h", "2 dni", "20 h")),
+    ("Približno koliko časa potrebuješ, da poveš svoje ime?", "1 s", ("1 min", "1 h", "1 dan", "10 min")),
+    ("Približno koliko časa trajajo poletne počitnice?", "2 meseca", ("2 dni", "2 h", "2 min", "2 leti")),
+    ("Približno koliko časa spiš ponoči?", "9 h", ("9 min", "9 s", "9 dni", "90 h")),
+    ("Približno koliko časa traja nogometna tekma?", "90 min", ("90 s", "90 h", "9 min", "9 dni")),
+)
+
+
+def make_estimate():
+    """A multiple choice estimate: (text, four options, index of the right one)."""
+    text, right, wrong = random.choice(ESTIMATES)
+    options = random.sample(wrong, 3) + [right]
+    random.shuffle(options)
+    return text, options, options.index(right)
+
+
 class Quiz:
-    """A math question answered on a row of digit wheels, so any controller can enter it."""
+    """A math break: QUIZ_QUESTIONS questions, answered on a row of digit wheels or by picking one of four
+    options, so any controller can enter them."""
 
     def __init__(self):
+        self.done = 0
+        # at least one estimate per break
+        self.kinds = ['choice'] + [random.choice(('num', 'num', 'choice')) for _ in range(QUIZ_QUESTIONS - 1)]
+        random.shuffle(self.kinds)
+        self.seen = set()
         self.new_question()
 
     def new_question(self):
-        self.text, self.answer, self.unit = make_question()
+        self.options = None     # set for multiple choice; then answer and choice are option indices
+        if self.kinds[self.done] == 'choice':
+            self.text = None
+            while self.text is None or self.text in self.seen:
+                self.text, self.options, self.answer = make_estimate()
+            self.seen.add(self.text)
+            self.unit = ""
+        else:
+            self.text, self.answer, self.unit = make_question()
+        self.choice = 0
+        self.wrong = set()      # options already picked wrongly
         self.digits = [0] * QUIZ_DIGITS
         self.cursor = QUIZ_DIGITS - 1
         self.tries = 0
-        self.solved = 0.0       # counts down after a correct answer, then the game resumes
+        self.solved = 0.0       # counts down after a correct answer, then the next question or the game
 
     def value(self):
+        if self.options:
+            return self.choice
         return int("".join(map(str, self.digits)))
 
-    def type_digit(self, d):   # keyboard: digits shift in from the right like a calculator
-        self.digits = self.digits[1:] + [d]
+    def max_tries(self):
+        return QUIZ_CHOICE_TRIES if self.options else QUIZ_TRIES
+
+    def solution(self):
+        if self.options:
+            return f"{'abcd'[self.answer]}) {self.options[self.answer]}"
+        return fmt(self.answer) + (f" {self.unit}" if self.unit else "")
+
+    def type_digit(self, d):   # keyboard: digits shift in from the right like a calculator, or 1-4 pick an option
+        if self.options:
+            if 1 <= d <= len(self.options):
+                self.choice = d - 1
+        else:
+            self.digits = self.digits[1:] + [d]
 
     def backspace(self):
-        self.digits = [0] + self.digits[:-1]
+        if not self.options:
+            self.digits = [0] + self.digits[:-1]
 
 
 # ---------------------------------------------------------------- sound
@@ -453,6 +554,19 @@ class Sounds:
         self.snd['boss'] = self.make(1.3, lambda t: (math.sin(tau * (70 + 10 * math.sin(t * 9)) * t) + n4() * 2)
                                      * min(1, t * 4) * e(-t * 1.8), 0.55)
         self.snd['lash'] = self.make(0.35, lambda t: n1() * 2 * e(-t * 12) + math.sin(tau * (900 - 1800 * t) * t) * e(-t * 9), 0.4)
+
+        def ho(t):   # Santa's laugh: three low, buzzy "ho"s, each a bit deeper
+            i, k = divmod(t, 0.26)
+            if k > 0.19:
+                return 0.0
+            f = (118 - 10 * i) * (1 - 0.3 * k)
+            v = sum(math.sin(tau * f * h * t) * a for h, a in ((1, 0.6), (2, 0.8), (3, 1.0), (4, 1.0), (5, 0.5), (6, 0.25)))
+            return (v * 0.3 + n4() * 0.6) * math.sin(math.pi * k / 0.19)
+        self.snd['laugh'] = self.make(0.8, ho, 0.5)
+
+        def bell(t, f):
+            return (math.sin(tau * f * t) + 0.5 * math.sin(tau * f * 2.76 * t)) * e(-t * 9) if t > 0 else 0.0
+        self.snd['jingle'] = self.make(0.5, lambda t: bell(t, 1319) * 0.6 + bell(t - 0.09, 1568) * 0.5 + bell(t - 0.18, 1760) * 0.4, 0.2)
 
     def make(self, dur, fn, vol=0.5):
         buf = array('h')
@@ -644,10 +758,11 @@ def make_tank_sprites(color):
     }
 
 
-def make_ghoul_sprites(kind):
-    """Front-facing chibi monsters; returns {(state, facing): surface} for base/white/slow."""
-    S = SS
-    N = 34
+def make_ghoul_sprites(kind, scale=1):
+    """Front-facing chibi monsters (and Santa's elves); returns {(state, facing): surface} for base/white/slow.
+    `scale` > 1 draws them that many times larger, for the game over portrait."""
+    S = SS if scale == 1 else 2 * scale
+    N = 28 if kind in ELF_KINDS else 34
     s = pygame.Surface((N * S, N * S), pygame.SRCALPHA)
 
     def C(x, y, r, col):
@@ -657,7 +772,7 @@ def make_ghoul_sprites(kind):
         pygame.draw.ellipse(s, col, (x * S, y * S, w * S, h * S))
 
     def Rr(x, y, w, h, col, br=0):
-        pygame.draw.rect(s, col, (x * S, y * S, w * S, h * S), border_radius=br * S)
+        pygame.draw.rect(s, col, (x * S, y * S, w * S, h * S), border_radius=int(br * S))
 
     def P(pts, col):
         pygame.draw.polygon(s, col, [(x * S, y * S) for x, y in pts])
@@ -701,6 +816,91 @@ def make_ghoul_sprites(kind):
         C(20, 11, 1.6, (230, 20, 30))
         P([(15, 15), (16, 15), (15.5, 17)], (255, 255, 255))
         P([(18, 15), (19, 15), (18.5, 17)], (255, 255, 255))
+    elif kind in ELF_KINDS:
+        skin, cheek, eye = (248, 208, 175), (240, 140, 130), (35, 25, 25)
+
+        def legs(stocking, shoe):
+            Rr(9, 22, 4, 4, stocking, 1)
+            Rr(15, 22, 4, 4, stocking, 1)
+            E(7, 24.5, 6.5, 3, shoe)
+            E(14.5, 24.5, 6.5, 3, shoe)
+
+        def body(coat, arms=True):
+            if arms:
+                Rr(4.5, 15.5, 5, 3, coat, 1)
+                Rr(18.5, 15.5, 5, 3, coat, 1)
+                C(4.8, 17, 1.7, skin)
+                C(23.2, 17, 1.7, skin)
+            Rr(8, 14.5, 12, 9.5, coat, 4)
+
+        def face(ears=True, y=11):
+            if ears:
+                P([(9, y - 1), (3.5, y - 4), (9, y + 2)], skin)
+                P([(19, y - 1), (24.5, y - 4), (19, y + 2)], skin)
+            C(14, y, 5.3, skin)
+            C(10.8, y + 2, 1.1, cheek)
+            C(17.2, y + 2, 1.1, cheek)
+            C(12, y, 0.9, eye)
+            C(16, y, 0.9, eye)
+            Rr(12.5, y + 2.8, 3, 0.9, (160, 50, 50), 0.4)
+
+        if kind == 'elf':          # the classic: green, with a bell on his hat
+            legs((215, 45, 50), (40, 110, 50))
+            body((50, 160, 70))
+            Rr(8, 19, 12, 2, (45, 30, 20))
+            Rr(12.5, 18.6, 3, 2.8, (235, 195, 60))
+            face()
+            P([(8.5, 8), (19.5, 8), (23.5, 1.5)], (50, 160, 70))
+            Rr(8, 6.8, 12, 2.6, (245, 245, 245), 1)
+            C(23.5, 2, 1.6, (245, 205, 60))
+        elif kind == 'candy':      # red and white stripes, with a candy cane
+            legs((60, 140, 70), (35, 35, 40))
+            pygame.draw.lines(s, (250, 250, 250), False, [(x * S, y * S) for x, y in
+                              ((24, 25), (24, 12), (24.6, 10.5), (26, 10), (27.2, 10.7), (27.4, 12.5))], int(1.6 * S))
+            for y in (13.5, 17, 20.5, 24):
+                pygame.draw.line(s, (220, 40, 50), (23.2 * S, y * S), (24.8 * S, (y - 1) * S), int(0.8 * S))
+            body((215, 45, 55))
+            for x in (10, 13.5, 17):
+                pygame.draw.line(s, (250, 250, 250), (x * S, 15 * S), ((x + 1.5) * S, 23 * S), int(1.1 * S))
+            face()
+            P([(8.5, 8), (19.5, 8), (14, 0.5)], (215, 45, 55))
+            pygame.draw.line(s, (250, 250, 250), (10.5 * S, 5.5 * S), (17.5 * S, 5.5 * S), int(1.3 * S))
+            pygame.draw.line(s, (250, 250, 250), (12.3 * S, 3 * S), (15.7 * S, 3 * S), int(1.1 * S))
+            Rr(8, 6.8, 12, 2.6, (245, 245, 245), 1)
+        elif kind == 'frost':      # winter parka with a fur hood and a scarf
+            legs((60, 80, 140), (235, 240, 250))
+            body((125, 185, 235))
+            Rr(12.8, 15, 2.4, 9, (235, 240, 250))   # zip
+            C(14, 10.5, 8, (125, 185, 235))          # hood
+            C(14, 11, 6.6, (240, 244, 252))          # fur
+            face(ears=False)
+            Rr(8.5, 14.5, 11, 2.6, (215, 50, 60), 1)
+            Rr(16, 15.5, 2.6, 5.5, (215, 50, 60), 1)
+        elif kind == 'giftelf':    # carries a present in both hands
+            legs((215, 45, 50), (150, 95, 35))
+            body((240, 190, 55), arms=False)
+            face()
+            P([(8.5, 8), (19.5, 8), (5, 2)], (230, 110, 40))
+            Rr(8, 6.8, 12, 2.6, (245, 245, 245), 1)
+            C(5, 2.5, 1.6, (245, 245, 245))
+            Rr(8.5, 16, 11, 8.5, (60, 145, 225), 1)
+            Rr(13.2, 16, 1.6, 8.5, (230, 50, 60))
+            Rr(8.5, 19.4, 11, 1.6, (230, 50, 60))
+            C(12.3, 15.6, 1.6, (230, 50, 60))
+            C(15.7, 15.6, 1.6, (230, 50, 60))
+            C(8.3, 20.5, 1.7, skin)
+            C(19.7, 20.5, 1.7, skin)
+        else:                      # gnome: tall red hat and a long white beard
+            legs((60, 90, 170), (115, 75, 40))
+            body((60, 95, 175))
+            Rr(8, 20, 12, 2, (45, 30, 20))
+            C(14, 12, 4.8, skin)
+            C(12.2, 11.4, 0.8, eye)
+            C(15.8, 11.4, 0.8, eye)
+            P([(9.5, 13), (18.5, 13), (17, 19), (14, 22.5), (11, 19)], (240, 240, 240))
+            C(14, 13.2, 1.9, (240, 150, 135))
+            P([(7.5, 10), (20.5, 10), (14, 0)], (215, 45, 50))
+            Rr(7.5, 9, 13, 1.8, (175, 30, 40), 0.8)
     else:
         body = (235, 240, 255, 205)
         C(6, 17, 3, body)
@@ -714,7 +914,7 @@ def make_ghoul_sprites(kind):
         E(18.5, 9, 4, 6, eye)
         E(15, 16, 4, 5, eye)
 
-    base = pygame.transform.smoothscale(s, (N, N)).convert_alpha()
+    base = pygame.transform.smoothscale(s, (N * scale, N * scale)).convert_alpha()
     white = base.copy()
     white.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGBA_MAX)
     slow = base.copy()
@@ -726,11 +926,28 @@ def make_ghoul_sprites(kind):
     return out
 
 
+def make_gift_sprite(col, ribbon, size):
+    """A wrapped present with a bow, `size` px square."""
+    u = SS * size / 20
+    g = pygame.Surface((round(20 * u), round(20 * u)), pygame.SRCALPHA)
+    dark = tuple(int(c * 0.72) for c in col)
+    light = tuple(min(255, int(c * 1.15) + 25) for c in col)
+    pygame.draw.rect(g, dark, (2 * u, 8 * u, 16 * u, 11 * u), border_radius=int(u))
+    pygame.draw.rect(g, col, (2 * u, 8 * u, 16 * u, 8 * u))
+    pygame.draw.rect(g, light, (1 * u, 5.5 * u, 18 * u, 4 * u), border_radius=int(u))
+    pygame.draw.rect(g, ribbon, (8.8 * u, 5.5 * u, 2.4 * u, 13.5 * u))
+    pygame.draw.rect(g, ribbon, (2 * u, 11.5 * u, 16 * u, 2.2 * u))
+    pygame.draw.ellipse(g, ribbon, (4.5 * u, 1.5 * u, 5.5 * u, 4.5 * u))
+    pygame.draw.ellipse(g, ribbon, (10 * u, 1.5 * u, 5.5 * u, 4.5 * u))
+    pygame.draw.circle(g, tuple(int(c * 0.8) for c in ribbon), (10 * u, 5 * u), 1.6 * u)
+    return pygame.transform.smoothscale(g, (size, size)).convert_alpha()
+
+
 def make_boss_sprites(kind, scale=1):
     """Bosses, drawn like the ghouls but bigger: {(state, facing): surface}, plus extra parts per kind.
     `scale` > 1 draws them that many times larger, for the game over portrait."""
     S = SS if scale == 1 else 2 * scale
-    N = 58 if kind == 'witch' else 52
+    N = 58 if kind in FLYING_BOSSES else 52
     s = pygame.Surface((N * S, N * S), pygame.SRCALPHA)
 
     def C(x, y, r, col):
@@ -818,7 +1035,7 @@ def make_boss_sprites(kind, scale=1):
             w = g.copy()
             w.fill((255, 255, 255, 0), special_flags=pygame.BLEND_RGBA_MAX)
             extra['segs_white'].append(w)
-    else:
+    elif kind == 'witch':
         L([(5, 44), (54, 40)], (120, 80, 40), 3)                         # broom
         P([(0, 38), (10, 41), (11, 46), (1, 51)], (215, 185, 95))
         for k in range(4):
@@ -847,6 +1064,35 @@ def make_boss_sprites(kind, scale=1):
         pygame.draw.lines(cat, fur, False, [(20 * S, 20 * S), (24 * S, 16 * S), (24 * S, 10 * S)], int(2 * S))
         pygame.draw.circle(cat, (255, 170, 40), (24 * S, 9 * S), 1.8 * S)  # lit fuse
         extra['cat'] = pygame.transform.smoothscale(cat, (26 * scale, 26 * scale)).convert_alpha()
+    if kind == 'santa':           # in his sleigh, with the sack of presents behind him
+        red, fur, skin, gold = (210, 35, 42), (248, 248, 248), (250, 208, 178), (240, 195, 65)
+        C(13, 25, 9.5, (150, 105, 60))                                   # sack
+        Rr(7, 13, 8, 7, (60, 145, 225), 1)
+        Rr(14, 14, 7, 6, (70, 180, 85), 1)
+        Rr(10.2, 13, 1.6, 7, (230, 50, 60))
+        P([(9, 18), (17, 18), (13, 15)], (130, 88, 50))
+        C(30, 28, 10.5, red)                                             # belly
+        Rr(28, 18, 4, 16, fur)
+        Rr(37, 21, 9, 4.5, red, 2)                                       # arm, waving
+        C(46.5, 22.5, 2.8, (40, 40, 45))
+        C(31, 14.5, 7, skin)                                             # head
+        for x, y, r in ((31, 22, 6), (26.5, 20, 3.8), (35.5, 20, 3.8), (31, 25.5, 4)):   # beard
+            C(x, y, r, fur)
+        C(26.2, 15.6, 1.4, (240, 140, 130))                              # rosy cheeks
+        C(35.8, 15.6, 1.4, (240, 140, 130))
+        for ex in (28.6, 33.4):                                          # laughing eyes
+            pygame.draw.arc(s, (60, 35, 30), ((ex - 1.4) * S, 12.2 * S, 2.8 * S, 2.2 * S), 0.3, math.pi - 0.3, max(1, int(0.8 * S)))
+        E(26.5, 16.6, 9, 3.4, fur)                                       # moustache
+        C(31, 16.3, 1.7, (238, 140, 125))                                # nose
+        P([(23.5, 10), (38.5, 10), (34, 3), (27, 1.5), (19, 5.5)], red)  # hat, flopping back
+        Rr(23, 8, 16, 3.4, fur, 1)
+        C(19, 6, 2.7, fur)
+        P([(3, 33), (46, 33), (51, 26), (56, 28), (51, 43), (9, 45), (2, 39)], (175, 25, 35))   # sleigh
+        L([(3, 34.5), (46, 34.5), (51.5, 27.5)], gold, 1.5)
+        L([(14, 44.5), (14, 50)], gold, 1.6)
+        L([(40, 43.5), (40, 50)], gold, 1.6)
+        L([(2, 47.5), (5, 50.5), (47, 50.5), (54, 45)], gold, 2)          # runner
+        extra['gifts'] = [make_gift_sprite(c, r, 18 * scale) for c, r in GIFT_LOOKS]
 
     base = pygame.transform.smoothscale(s, (N * scale, N * scale)).convert_alpha()
     white = base.copy()
@@ -856,6 +1102,63 @@ def make_boss_sprites(kind, scale=1):
         out[(name, 1)] = img
         out[(name, -1)] = pygame.transform.flip(img, True, False)
     return out
+
+
+def make_santa_portrait():
+    """The laughing Santa for the game over screen: round, rosy and jolly, in red and white fur."""
+    S = 4
+    s = pygame.Surface((160 * S, 180 * S), pygame.SRCALPHA)
+
+    def C(x, y, r, col):
+        pygame.draw.circle(s, col, (x * S, y * S), r * S)
+
+    def E(x, y, w, h, col):
+        pygame.draw.ellipse(s, col, (x * S, y * S, w * S, h * S))
+
+    def Rr(x, y, w, h, col, br=0):
+        pygame.draw.rect(s, col, (x * S, y * S, w * S, h * S), border_radius=int(br * S))
+
+    red, dark_red, fur, shade = (210, 32, 40), (150, 18, 26), (252, 252, 252), (205, 210, 225)
+    skin, rosy = (250, 212, 182), (240, 128, 118)
+    E(10, 110, 140, 96, dark_red)                                        # body
+    E(14, 110, 132, 90, red)
+    Rr(71, 116, 18, 64, fur, 7)
+    Rr(12, 146, 136, 13, (32, 26, 26), 3)                                # belt
+    Rr(65, 142, 30, 21, (240, 195, 65), 4)
+    Rr(71, 147, 18, 11, (32, 26, 26), 2)
+    for x in (16, 116):                                                  # hands on the belly
+        E(x, 124, 28, 20, fur)
+        E(x + 3, 128, 22, 18, (40, 40, 46))
+    C(80, 80, 29, skin)                                                  # face
+    whiskers = ((44, 92, 12), (116, 92, 12), (48, 106, 16), (112, 106, 16), (62, 118, 18), (98, 118, 18),
+                (80, 124, 20), (64, 134, 12), (96, 134, 12), (80, 142, 13))
+    for x, y, r in whiskers:
+        C(x, y + 1.5, r + 1.5, shade)
+    for x, y, r in whiskers:
+        C(x, y, r, fur)
+    C(61, 92, 8.5, rosy)                                                 # cheeks
+    C(99, 92, 8.5, rosy)
+    for ex in (68, 92):                                                  # eyes squeezed shut with laughing
+        pygame.draw.arc(s, (70, 40, 32), ((ex - 7) * S, 72 * S, 14 * S, 11 * S), 0.25, math.pi - 0.25, int(2.4 * S))
+    E(55, 63, 24, 9, fur)                                                # eyebrows
+    E(81, 63, 24, 9, fur)
+    E(64, 99, 32, 25, (110, 18, 28))                                     # mouth, wide open
+    E(70, 111, 20, 11, (230, 105, 115))
+    Rr(67, 100, 26, 5.5, (255, 255, 255), 2)
+    E(51, 88.5, 30, 14, shade)                                           # moustache
+    E(79, 88.5, 30, 14, shade)
+    E(51, 87, 30, 13, fur)
+    E(79, 87, 30, 13, fur)
+    C(80, 87, 7.5, (238, 145, 130))                                      # nose
+    C(77.5, 84.5, 2.6, (255, 205, 195))
+    pts = [(46, 62), (52, 32), (70, 16), (96, 16), (120, 30), (138, 50), (128, 56), (112, 42), (114, 62)]
+    pygame.draw.polygon(s, red, [(x * S, y * S) for x, y in pts])        # hat, flopping over to the side
+    pygame.draw.polygon(s, dark_red, [(x * S, y * S) for x, y in ((120, 30), (138, 50), (128, 56), (112, 42))])
+    Rr(38, 55, 84, 18, shade, 9)
+    Rr(38, 52, 84, 18, fur, 9)
+    C(137, 56, 12, shade)
+    C(136, 54, 11.5, fur)
+    return pygame.transform.smoothscale(s, (440, 495)).convert_alpha()
 
 
 def make_rider_sprite():
@@ -1672,10 +1975,11 @@ class Tank:
 
 
 class Ghoul:
-    def __init__(self, kind, x, y):
+    def __init__(self, kind, x, y, hp=GHOUL_HP, speed=GHOUL_SPEED):
         self.kind = kind
         self.x, self.y = x, y
-        self.hp = GHOUL_HP
+        self.hp = self.max_hp = hp
+        self.speed = speed
         self.regen = 0.0
         self.slow = 0.0
         self.flash = 0.0
@@ -1688,7 +1992,8 @@ class Ghoul:
 
 
 class Boss:
-    """Co-op boss: bigger and faster than a ghoul, with a ranged attack thrown only along a row or column."""
+    """Co-op boss: bigger and faster than a ghoul, with a ranged attack thrown only along a row or column.
+    Also Santa, who is flown by a player instead."""
 
     def __init__(self, kind, x, y, hp):
         self.kind = kind
@@ -1707,6 +2012,8 @@ class Boss:
         self.armed = True            # knight: sword in hand
         self.trail = [(x, y)]        # snake: recent head positions, newest first
         self.segs = []               # snake: body segment positions, head to tail
+        self.angle = 0.0             # santa: aim
+        self.throw = None            # santa: landing distance while the throw button is held
 
 
 class BossShot:
@@ -1800,7 +2107,7 @@ class Game:
         self.mode = 'versus'
         self.ghouls = []
         self.pickups = []    # [x, y, life] small ammo drops in co-op
-        self.ghoul_sprites = {k: make_ghoul_sprites(k) for k in GHOUL_KINDS}
+        self.ghoul_sprites = {k: make_ghoul_sprites(k) for k in GHOUL_KINDS + ELF_KINDS}
         self.ghoul_shadow = pygame.Surface((26, 10), pygame.SRCALPHA)
         pygame.draw.ellipse(self.ghoul_shadow, (0, 0, 0, 90), (0, 0, 26, 10))
         self.splats = {}
@@ -1813,12 +2120,15 @@ class Game:
         self.text_cache = {}
         self.lobby_cache = None
         self.special_sprites = {k: make_special_sprites(k) for k in SPECIALS}
-        self.boss_sprites = {k: make_boss_sprites(k) for k in BOSS_KINDS}
+        self.boss_sprites = {k: make_boss_sprites(k) for k in BOSS_KINDS + ('santa',)}
         self.boss_shadow = pygame.transform.smoothscale(self.ghoul_shadow, (40, 15))
         self.bosses = []
         self.boss_shots = []
         self.boss_pending = None   # (kind, hp) of the boss this wave still has to bring
         self.webs = {}             # (col, row) -> seconds left; spider webs slow tanks
+        self.santa = None          # Santa mode: his Boss while he's in the arena
+        self.santa_player = None   # who flies him this match
+        self.laugh_at = -SANTA_LAUGH_GAP
         self.rider = None
         self.rider_sprite = make_rider_sprite()
         self.rider_cache = {}      # the rider pre-rotated in 5 degree steps
@@ -1898,6 +2208,7 @@ class Game:
             lst.clear()
         self.webs.clear()
         self.boss_pending = None
+        self.santa = None
         self.rider = None
         self.crate = None
         self.crate_timer = CRATE_RESPAWN
@@ -1920,11 +2231,13 @@ class Game:
         for p in self.players:
             p.score = 0
             p.kills = 0
+        if self.mode == 'santa':
+            self.santa_player = self.pick_santa()
         self.new_round()
 
     def make_tank(self, p):
         t = Tank(p, *p.spawn)
-        if self.mode == 'coop':
+        if self.mode in ('coop', 'santa'):
             t.hp = t.max_hp = COOP_TANK_HP
         return t
 
@@ -1943,11 +2256,16 @@ class Game:
         random.shuffle(sides)
         spawns = corners + sides
         cx, cy = W / 2, HUD + ROWS * T / 2
-        for p, (c, r) in zip(self.players, spawns):
+        if self.mode == 'santa' and self.santa_player not in self.players:
+            self.santa_player = self.pick_santa()
+        tankers = [p for p in self.players if not (self.mode == 'santa' and p is self.santa_player)]
+        for p, (c, r) in zip(tankers, spawns):
             x, y = tile_center(c, r)
             p.spawn = (x, y, math.atan2(cy - y, cx - x))
             p.tank = self.make_tank(p)
-        if self.mode == 'coop':
+        if self.mode == 'santa':
+            self.santa_player.tank = None
+        if self.mode in ('coop', 'santa'):
             self.wave = 0
             self.wave_break = 0.5
             self.wave_to_spawn = 0
@@ -2061,11 +2379,16 @@ class Game:
                 self.banner = None
         if self.mode == 'race':
             pass   # update_race handles the finish
-        elif self.state == 'play' and self.mode == 'coop':
+        elif self.state == 'play' and self.mode in ('coop', 'santa'):
             self.update_crate(dt)
-            self.update_waves(dt)
+            if self.mode == 'coop':
+                self.update_waves(dt)
+            else:
+                self.update_santa_round(dt)
+                self.update_santa(dt)
             self.update_ghouls(dt)
-            self.update_bosses(dt)
+            if self.mode == 'coop':
+                self.update_bosses(dt)
             self.update_boss_shots(dt)
             self.update_pickups(dt)
             self.update_packet(dt)
@@ -2074,9 +2397,13 @@ class Game:
             if self.ending is not None:
                 self.ending -= dt
                 if self.ending <= 0:
-                    self.best_wave = max(self.best_wave, self.wave)
                     self.state = 'coopover'
                     self.timer = 1.5
+                    if self.mode == 'santa':   # Santa always gets the last laugh
+                        self.taunt = self.make_taunt_screen('santa')
+                        self.sounds.play('laugh')
+                        return
+                    self.best_wave = max(self.best_wave, self.wave)
                     boss = self.bosses[0].kind if self.bosses else self.boss_pending and self.boss_pending[0]
                     if boss:
                         self.taunt = self.make_taunt_screen(boss)
@@ -2101,7 +2428,7 @@ class Game:
         """Moments where a math question doesn't interrupt the action."""
         if self.state in ('lobby', 'roundover', 'matchover', 'coopover'):
             return True
-        return (self.mode == 'coop' and self.state == 'play' and self.wave_break > 0
+        return (self.mode in ('coop', 'santa') and self.state == 'play' and self.wave_break > 0
                 and not self.ghouls and self.wave_to_spawn == 0 and self.ending is None)
 
     def update_quiz(self, dt):
@@ -2109,19 +2436,29 @@ class Game:
         if q.solved > 0:
             q.solved -= dt
             if q.solved <= 0:
-                self.quiz = None
-                self.quiz_clock = 0.0
+                q.done += 1
+                self.quiz_msg = None
+                if q.done >= QUIZ_QUESTIONS:
+                    self.quiz = None
+                    self.quiz_clock = 0.0
+                else:
+                    q.new_question()
             return
         # anyone can answer: every connected pad and both keyboard halves
         for pad in self.pads.values():
             pr = pad.pressed
-            if 'up' in pr:
+            if q.options:   # a 2 x 2 grid of options
+                if pr & {'up', 'down'}:
+                    q.choice ^= 2
+                if pr & {'left', 'right'}:
+                    q.choice ^= 1
+            elif 'up' in pr:
                 q.digits[q.cursor] = (q.digits[q.cursor] + 1) % 10
-            if 'down' in pr:
+            if 'down' in pr and not q.options:
                 q.digits[q.cursor] = (q.digits[q.cursor] - 1) % 10
-            if 'left' in pr:
+            if 'left' in pr and not q.options:
                 q.cursor = max(0, q.cursor - 1)
-            if 'right' in pr:
+            if 'right' in pr and not q.options:
                 q.cursor = min(QUIZ_DIGITS - 1, q.cursor + 1)
             if pr & {'up', 'down', 'left', 'right'}:
                 self.sounds.play('empty')
@@ -2137,13 +2474,13 @@ class Game:
             self.sounds.play('pickup')
             return
         q.tries += 1
+        q.wrong.add(q.value())
         self.sounds.play('hit')
-        if q.tries >= QUIZ_TRIES:
-            unit = f" {q.unit}" if q.unit else ""
-            self.quiz_msg = [f"Pravilni odgovor je {fmt(q.answer)}{unit}. Poskusi še to nalogo.", (255, 200, 90)]
+        if q.tries >= q.max_tries():
+            self.quiz_msg = [f"Pravilni odgovor je {q.solution()}. Poskusi še to nalogo.", (255, 200, 90)]
             q.new_question()
         else:
-            left = QUIZ_TRIES - q.tries
+            left = q.max_tries() - q.tries
             self.quiz_msg = [f"Ni pravilno. Poskusi znova! Še {left} poskus{'a' if left == 2 else ''}.", (255, 110, 90)]
 
     def update_lobby(self):
@@ -2161,12 +2498,15 @@ class Game:
             if 'y' in pad.pressed:
                 self.toggle_mode()
             if 'start' in pad.pressed and self.players and (pl or pad.kind.startswith('kb')):
+                if self.mode == 'santa' and len(self.players) < 2:   # Santa needs someone to hunt him
+                    self.sounds.play('empty')
+                    continue
                 self.start_match()
                 return
 
     def toggle_mode(self):
-        self.mode = {'versus': 'coop', 'coop': 'race', 'race': 'versus'}[self.mode]
-        self.sounds.play({'coop': 'groan', 'race': 'go'}.get(self.mode, 'join'))
+        self.mode = {'versus': 'coop', 'coop': 'race', 'race': 'santa', 'santa': 'versus'}[self.mode]
+        self.sounds.play({'coop': 'groan', 'race': 'go', 'santa': 'laugh'}.get(self.mode, 'join'))
 
     def claim_orphans(self):
         """A reconnected controller (new instance id) takes over a player whose pad vanished."""
@@ -2354,8 +2694,8 @@ class Game:
             t.special = None
 
     def targets(self, owner):
-        """What specials can hurt: ghouls in co-op, enemy tanks in versus."""
-        if self.mode == 'coop':
+        """What specials can hurt: ghouls (and elves, bosses, Santa) in co-op and Santa mode, enemy tanks in versus."""
+        if self.mode in ('coop', 'santa'):
             out = [(g.x, g.y, GHOUL_R, g) for g in self.ghouls if not g.dead and g.emerge <= 0]
             for b in self.bosses:
                 if not b.dead and b.emerge <= 0:
@@ -2555,7 +2895,7 @@ class Game:
                     b.dead = True
                     break
                 b.x, b.y = nx, ny
-                if self.mode == 'coop':
+                if self.mode in ('coop', 'santa'):
                     for gh in self.ghouls:
                         if not gh.dead and gh.emerge <= 0 and (gh.x - b.x) ** 2 + (gh.y - b.y) ** 2 < (GHOUL_R + BULLET_R) ** 2:
                             self.hit_ghoul(gh, b)
@@ -2637,6 +2977,9 @@ class Game:
         self.shake = max(self.shake, 0.6)
         self.sounds.play('explode')
         self.rumble(t.player, 1.0, 1.0, 600)
+        if self.mode == 'santa' and self.santa_player:   # every tank lost in Santa mode is his doing
+            self.santa_player.kills += 1
+            self.santa_laugh(force=True)
 
     # ---- co-op
 
@@ -2696,19 +3039,25 @@ class Game:
         pool = edge or far or cand
         return tile_center(*random.choice(pool)) if pool else None
 
-    def spawn_ghoul(self, tanks):
+    def spawn_ghoul(self, tanks, kind=None):
         spot = self.spawn_spot(tanks)
         if not spot:
             return
         x, y = spot
-        kind = random.choice(GHOUL_KINDS)
-        self.ghouls.append(Ghoul(kind, x, y))
-        if kind != 'ghost':
-            self.arena.scorch_mark(x, y)
+        kind = kind or random.choice(GHOUL_KINDS)
+        if kind in ELF_STATS:
+            hp, k = ELF_STATS[kind]
+            self.ghouls.append(Ghoul(kind, x, y, hp, ELF_SPEED * k))
+            self.sparks(x, y, (255, 250, 220), 14)
+            self.sounds.play('jingle')
+        else:
+            self.ghouls.append(Ghoul(kind, x, y))
+            if kind != 'ghost':
+                self.arena.scorch_mark(x, y)
+            self.sounds.play('groan')
         for _ in range(10):
             self.particles.append([x + random.uniform(-10, 10), y + random.uniform(-6, 10), random.uniform(-15, 15),
                                    random.uniform(-40, -10), 1.0, 1.0, 'smoke', random.uniform(4, 8)])
-        self.sounds.play('groan')
 
     def compute_flow(self, tanks):
         """Dijkstra distance field from every live tank: walkers step downhill, so each follows its closest tank.
@@ -2763,7 +3112,7 @@ class Game:
             gh.flash -= dt
             gh.slow -= dt
             gh.attack -= dt
-            if gh.hp < GHOUL_HP:
+            if gh.hp < gh.max_hp:
                 gh.regen += dt
                 if gh.regen >= GHOUL_REGEN:
                     gh.regen = 0.0
@@ -2784,7 +3133,7 @@ class Game:
         for gh in self.ghouls:
             if gh.emerge > 0:
                 continue
-            speed = GHOUL_SPEED * (GHOUL_SLOW if gh.slow > 0 else 1.0)
+            speed = gh.speed * (GHOUL_SLOW if gh.slow > 0 else 1.0)
             gh.phase += dt * 9 * speed / GHOUL_SPEED
             nearest = min(tanks, key=lambda t: (t.x - gh.x) ** 2 + (t.y - gh.y) ** 2)
             if gh.kind == 'ghost':
@@ -2878,7 +3227,7 @@ class Game:
         b = Boss(kind, spot[0], spot[1], hp)
         self.bosses.append(b)
         self.banner = [BOSS_NAMES[kind], 2.5]
-        if kind != 'witch':
+        if kind not in FLYING_BOSSES:
             self.arena.scorch_mark(b.x, b.y, big=True)
         for _ in range(20):
             self.particles.append([b.x + random.uniform(-16, 16), b.y + random.uniform(-10, 14), random.uniform(-25, 25),
@@ -3002,19 +3351,20 @@ class Game:
     def update_boss_shots(self, dt):
         tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
         for s in self.boss_shots:
-            if s.kind == 'cat':   # lobbed in an arc over everything, then hisses and goes off
+            if s.kind in ('cat', 'gift'):   # lobbed in an arc over everything, then hisses (or ticks) and goes off
+                cat = s.kind == 'cat'
                 if s.fuse is None:
-                    s.done = min(s.dist, s.done + CAT_SPEED * dt)
+                    s.done = min(s.dist, s.done + (CAT_SPEED if cat else GIFT_SPEED) * dt)
                     k = s.done / s.dist
                     s.x, s.y = s.sx + s.dx * s.done, s.sy + s.dy * s.done
                     s.z = 4 * (30 + s.dist * 0.2) * k * (1 - k)
                     s.spin += dt * 12
                     if k >= 1:
-                        s.fuse = CAT_FUSE
+                        s.fuse = CAT_FUSE if cat else GIFT_FUSE
                 else:
                     s.fuse -= dt
                     if s.fuse <= 0:
-                        self.explode(s.x, s.y, CAT_RADIUS, None)
+                        self.explode(s.x, s.y, CAT_RADIUS if cat else GIFT_RADIUS, None)
                         s.dead = True
                 continue
             speed = SWORD_SPEED if s.kind == 'sword' else SPIT_SPEED
@@ -3092,14 +3442,17 @@ class Game:
             sp = random.uniform(40, 260)
             life = random.uniform(0.4, 0.9)
             self.particles.append([b.x, b.y, math.cos(a) * sp, math.sin(a) * sp, life, life, 'fire', random.uniform(6, 13)])
-        if b.kind != 'witch':
+        if b.kind not in FLYING_BOSSES:
             self.arena.scorch_mark(b.x, b.y, big=True)
         self.rings.append([b.x, b.y, 0.0, 0.6])
         self.flashes.append([b.x, b.y, 0.0, 0.6, 180])
         self.shake = max(self.shake, 0.8)
-        self.banner = ["BOSS PREMAGAN", 2.5]
         self.sounds.play('explode')
         self.rumble(player, 1.0, 1.0, 500)
+        if b.kind == 'santa':
+            self.santa_beaten()
+            return
+        self.banner = ["BOSS PREMAGAN", 2.5]
         for k in range(3):   # loot
             a = k * math.tau / 3
             x, y = self.arena.collide_circle(b.x + math.cos(a) * 24, b.y + math.sin(a) * 24, 8)
@@ -3117,6 +3470,130 @@ class Game:
                     self.texts.append([f"+{AMMO_DROP}", pk[0], pk[1] - 16, 0.0, (255, 220, 100)])
                     break
         self.pickups = [pk for pk in self.pickups if pk[2] > 0]
+
+    # ---- Santa mode
+
+    def pick_santa(self):
+        """Players take turns at flying Santa, one match each."""
+        if self.santa_player in self.players:
+            return self.players[(self.players.index(self.santa_player) + 1) % len(self.players)]
+        return random.choice(self.players)
+
+    def update_santa_round(self, dt):
+        tanks = [p.tank for p in self.players if p.tank and p.tank.alive]
+        if not tanks:
+            return
+        if self.wave_break > 0:
+            self.wave_break -= dt
+            if self.wave_break <= 0:
+                self.start_santa_round()
+            return
+        if self.wave_to_spawn > 0:
+            self.spawn_timer -= dt
+            if self.spawn_timer <= 0:
+                self.wave_to_spawn -= 1
+                self.spawn_ghoul(tanks, ELF_KINDS[self.wave_to_spawn % len(ELF_KINDS)])   # every kind, every time
+                self.spawn_timer = SANTA_ELF_GAP
+
+    def start_santa_round(self):
+        """Santa flies in, from the second round on with SANTA_HELPERS more elves each time."""
+        self.wave += 1
+        self.wave_to_spawn = SANTA_HELPERS * (self.wave - 1)
+        self.spawn_timer = 1.0
+        for p in self.players:   # destroyed tanks come back, and everyone gets a full load
+            if p is self.santa_player:
+                continue
+            if not (p.tank and p.tank.alive):
+                p.tank = self.make_tank(p)
+                p.tank.invuln = 2.0
+                self.rings.append([p.tank.x, p.tank.y, 0.0, 0.4])
+            p.tank.ammo = MAX_AMMO
+        tanks = [p.tank for p in self.players if p.tank]
+        x, y = self.spawn_spot(tanks) or (W / 2, HUD + T)
+        b = self.santa = Boss('santa', x, y, SANTA_HP + SANTA_HP_PER_TANK * len(tanks))
+        b.angle = math.atan2(HUD + ROWS * T / 2 - y, W / 2 - x)
+        b.face = 1 if x < W / 2 else -1
+        self.bosses.append(b)
+        self.banner = ["BOŽIČEK PRIHAJA!" if self.wave == 1 else "BOŽIČEK SE VRAČA!", 2.5]
+        for _ in range(20):
+            self.particles.append([x + random.uniform(-16, 16), y + random.uniform(-10, 14), random.uniform(-25, 25),
+                                   random.uniform(-50, -15), 1.3, 1.3, 'smoke', random.uniform(6, 11)])
+        self.rings.append([x, y, 0.0, 0.6])
+        self.sounds.play('jingle')
+        self.santa_laugh(force=True)
+
+    def santa_laugh(self, force=False):
+        if not force and self.now - self.laugh_at < SANTA_LAUGH_GAP:
+            return
+        self.laugh_at = self.now
+        self.sounds.play('laugh')
+        if self.santa:
+            self.texts.append(["HO HO HO!", self.santa.x, self.santa.y - 44, 0.0, (255, 235, 200)])
+
+    def update_santa(self, dt):
+        """The Santa player flies over everything and lobs gifts: hold fire to walk the landing circle out, release to throw."""
+        b = self.santa
+        if not b:
+            return
+        b.flash -= dt
+        b.cool -= dt
+        b.phase += dt * 8
+        if b.emerge > 0:
+            b.emerge -= dt
+            return
+        pad = self.pads.get(self.santa_player.pad_id)
+        if not pad:
+            b.throw = None
+            return
+        mx, my = pad.move
+        b.x = clamp(b.x + mx * SANTA_SPEED * dt, T / 2, W - T / 2)
+        b.y = clamp(b.y + my * SANTA_SPEED * dt, HUD + T / 2, H - T / 2)
+        if abs(mx) > 0.2:
+            b.face = 1 if mx > 0 else -1
+        if pad.aim is not None:
+            b.angle = pad.aim
+        elif pad.turret_rot:
+            b.angle += pad.turret_rot * KB_TURRET_SPEED * dt
+        if 'fire' in pad.held and b.cool <= 0:
+            b.throw = SANTA_THROW_MIN if b.throw is None else min(SANTA_THROW_MAX, b.throw + SANTA_AIM_SPEED * dt)
+        elif b.throw is not None:
+            self.santa_throw(b)
+
+    def santa_target(self, b):
+        """Where a gift thrown now would land."""
+        return (clamp(b.x + math.cos(b.angle) * b.throw, T / 2, W - T / 2),
+                clamp(b.y + math.sin(b.angle) * b.throw, HUD + T / 2, H - T / 2))
+
+    def santa_throw(self, b):
+        tx, ty = self.santa_target(b)
+        b.throw = None
+        d = math.hypot(tx - b.x, ty - b.y)
+        dx, dy = ((tx - b.x) / d, (ty - b.y) / d) if d > 1 else (math.cos(b.angle), math.sin(b.angle))
+        self.boss_shots.append(BossShot('gift', b, b.x, b.y, dx, dy, d))
+        b.cool = SANTA_THROW_CD
+        if abs(dx) > 0.2:
+            b.face = 1 if dx > 0 else -1
+        self.sounds.play('throw')
+        if random.random() < 0.4:
+            self.santa_laugh()
+
+    def santa_beaten(self):
+        """The tanks got him: his elves and gifts vanish, the tanks are repaired, and after a break he's back."""
+        self.santa = None
+        for gh in self.ghouls:
+            for _ in range(6):
+                self.particles.append([gh.x, gh.y, random.uniform(-30, 30), random.uniform(-40, 0), 0.9, 0.9, 'smoke',
+                                       random.uniform(4, 8)])
+        self.ghouls.clear()
+        self.boss_shots.clear()
+        self.wave_to_spawn = 0
+        self.wave_break = WAVE_BREAK
+        self.banner = ["BOŽIČEK PREMAGAN!", 2.5]
+        self.sounds.play('pickup')
+        for t in (p.tank for p in self.players if p.tank and p.tank.alive):
+            if t.hp < t.max_hp:
+                t.hp = t.max_hp
+                self.texts.append(["POPRAVLJEN", t.x, t.y - 24, 0.0, (120, 230, 120)])
 
     # ---- race
 
@@ -3629,9 +4106,9 @@ class Game:
         sh = self.ghoul_shadow if not ghost else pygame.transform.rotozoom(self.ghoul_shadow, 0, 0.7)
         blit_center(w, sh, gh.x, gh.y + (16 if ghost else 13))
         blit_center(w, pygame.transform.rotozoom(img, ang, scale), gh.x, gh.y - 2 + bob)
-        if gh.hp < GHOUL_HP and gh.emerge <= 0:
-            for i in range(GHOUL_HP):
-                self.world.fill((220, 60, 50) if i < gh.hp else (60, 60, 65), (gh.x - 14 + i * 6, gh.y - 26, 5, 4))
+        if gh.hp < gh.max_hp and gh.emerge <= 0:
+            for i in range(gh.max_hp):
+                self.world.fill((220, 60, 50) if i < gh.hp else (60, 60, 65), (gh.x - gh.max_hp * 3 + 1 + i * 6, gh.y - 26, 5, 4))
 
     def draw_webs(self, w):
         for (c, r), life in self.webs.items():
@@ -3656,7 +4133,9 @@ class Game:
             for k in range(BOSS_R + 6, int(d), 22):
                 x, y = b.x + ax * k, b.y + ay * k
                 pygame.draw.line(w, (255, 70, 50), (x, y), (x + ax * 10, y + ay * 10), 3)
-        flying = b.kind == 'witch'
+        flying = b.kind in FLYING_BOSSES
+        if b.kind == 'santa' and scale >= 1:
+            self.draw_santa_aim(w, b)
         if b.kind == 'snake':
             segs = spr['segs_white' if b.flash > 0 else 'segs']
             for k in range(len(b.segs) - 1, 0, -1):
@@ -3672,6 +4151,20 @@ class Game:
         if b.kind == 'knight' and b.armed and scale >= 1:
             sw = spr['sword'] if b.face > 0 else pygame.transform.flip(spr['sword'], True, False)
             blit_center(w, sw, b.x + b.face * 22, b.y - 6 + bob)
+
+    def draw_santa_aim(self, w, b):
+        if b.throw is not None:   # landing circle and the arc the gift will fly
+            tx, ty = self.santa_target(b)
+            pygame.draw.circle(w, (230, 40, 40), (tx, ty), GIFT_RADIUS + 2 * math.sin(self.now * 12), 3)
+            pygame.draw.circle(w, (255, 90, 80), (tx, ty), 6, 2)
+            peak = 4 * (30 + math.hypot(tx - b.x, ty - b.y) * 0.2)
+            for i in range(1, 8):
+                k = i / 8
+                pygame.draw.circle(w, (255, 230, 160), (b.x + (tx - b.x) * k, b.y + (ty - b.y) * k - peak * k * (1 - k)), 2)
+        else:   # an arrow in the player's colour shows where he's aiming
+            ca, sa = math.cos(b.angle), math.sin(b.angle)
+            x, y = b.x + ca * 36, b.y + sa * 36
+            pygame.draw.polygon(w, self.santa_player.color, [(x + ca * 9, y + sa * 9), (x - sa * 6, y + ca * 6), (x + sa * 6, y - ca * 6)])
 
     def draw_boss_shots(self, w):
         for s in self.boss_shots:
@@ -3689,7 +4182,7 @@ class Game:
                 add_glow(w, (40, 90, 10), s.x, s.y, 20)
                 pygame.draw.circle(w, (150, 230, 60), (s.x, s.y), 6)
                 pygame.draw.circle(w, (220, 255, 160), (s.x - 2, s.y - 2), 2)
-            else:
+            elif s.kind == 'cat':
                 cat = self.boss_sprites['witch']['cat']
                 blit_center(w, self.ghoul_shadow, s.x, s.y + 8)
                 if s.fuse is not None:
@@ -3699,6 +4192,16 @@ class Game:
                 else:
                     blit_center(w, pygame.transform.rotate(cat, -math.degrees(s.spin)), s.x, s.y - s.z)
                 add_glow(w, (120, 60, 10), s.x + 9, s.y - s.z - 9, 12)   # the fuse
+            else:
+                gift = self.boss_sprites['santa']['gifts'][int(s.sx + s.sy) % len(GIFT_LOOKS)]
+                blit_center(w, self.ghoul_shadow, s.x, s.y + 8)
+                if s.fuse is not None:
+                    if int(s.fuse * 12) % 2:
+                        pygame.draw.circle(w, (255, 60, 40), (s.x, s.y), GIFT_RADIUS, 2)
+                        add_glow(w, (120, 40, 20), s.x, s.y, 24)
+                    blit_center(w, gift, s.x, s.y - 4)
+                else:
+                    blit_center(w, pygame.transform.rotate(gift, -math.degrees(s.spin)), s.x, s.y - s.z)
 
     def draw_race_tank(self, dst, t):
         p = t.player
@@ -3879,7 +4382,7 @@ class Game:
             if gh.kind != 'ghost':
                 self.draw_ghoul(w, gh)
         for b in self.bosses:
-            if b.kind != 'witch':
+            if b.kind not in FLYING_BOSSES:
                 self.draw_boss(w, b)
         for t in tanks:
             if t.invuln > 0 and t.flash <= 0 and int(self.now * 12) % 2:
@@ -3915,8 +4418,8 @@ class Game:
         for gh in self.ghouls:   # ghosts float above walls and bushes
             if gh.kind == 'ghost':
                 self.draw_ghoul(w, gh)
-        for b in self.bosses:    # and so does the witch
-            if b.kind == 'witch':
+        for b in self.bosses:    # and so do the witch and Santa
+            if b.kind in FLYING_BOSSES:
                 self.draw_boss(w, b)
         if self.boss_shots:
             self.draw_boss_shots(w)
@@ -3934,53 +4437,71 @@ class Game:
         slot = W // MAX_PLAYERS
         for p in self.players:
             x0 = p.idx * slot + 8
-            icon = pygame.transform.rotozoom(p.sprites['body'], 0, 0.7)
-            self.screen.blit(icon, icon.get_rect(center=(x0 + 14, HUD // 2)))
-            tur = pygame.transform.rotozoom(p.sprites['turret'], 0, 0.7)
-            self.screen.blit(tur, tur.get_rect(center=(x0 + 14, HUD // 2)))
-            self.screen.blit(self.render(self.font_hud, f"P{p.idx + 1}", p.color), (x0 + 30, 11))
-            t = p.tank
-            hp = t.hp if t and t.alive else 0
-            ammo = t.ammo if t and t.alive else 0
-            if self.mode == 'race':
-                lap = clamp(t.lap + 1, 1, RACE_LAPS) if t else 1
-                info = "CILJ" if t and t.finished else f"KROG {lap}/{RACE_LAPS}"
-                self.screen.blit(self.render(self.font_tiny, info, (225, 225, 225)), (x0 + 62, 3))
-                if t and len(self.players) > 1:
-                    self.screen.blit(self.render(self.font_tiny, ORDINALS[t.place - 1], p.color), (x0 + 128, 3))
+            if self.mode == 'santa' and p is self.santa_player:
+                self.draw_santa_hud(p, x0)
             else:
-                for i in range(t.max_hp if t else TANK_HP):
-                    col = (230, 70, 60) if i < hp else (70, 70, 75)
-                    self.screen.fill(col, (x0 + 62 + i * 14, 6, 11, 10))
-            empty_flash = t and t.alive and ammo == 0 and int(self.now * 4) % 2
-            for i in range(MAX_AMMO):
-                col = (230, 185, 70) if i < ammo else ((150, 50, 45) if empty_flash else (60, 60, 65))
-                self.screen.fill(col, (x0 + 62 + i * 6, 21, 4, 12))
-            if self.mode == 'coop':
-                self.screen.blit(self.render(self.font_hud, f"x{p.kills}", (230, 230, 230)), (x0 + 140, 11))
-            if self.mode == 'race':
-                self.screen.blit(self.render(self.font_tiny, f"x{p.kills}", (230, 60, 55)), (x0 + 184, 13))
-            elif t and t.alive and t.special:
-                ready = t.special_charge <= 0
-                label = SPECIAL_NAMES[t.special] if ready else f"{SPECIAL_NAMES[t.special]} {math.ceil(t.special_charge)}"
-                self.screen.blit(self.render(self.font_tiny, label, SPECIAL_COLORS[t.special] if ready else (120, 120, 128)),
-                                 (x0 + 134, 27))
-            for i in range(self.win_score() if self.mode != 'coop' else 0):
-                cx = x0 + 134 + i * 14
-                if i < p.score:
-                    pygame.draw.circle(self.screen, p.color, (cx, HUD // 2), 5)
+                icon = pygame.transform.rotozoom(p.sprites['body'], 0, 0.7)
+                self.screen.blit(icon, icon.get_rect(center=(x0 + 14, HUD // 2)))
+                tur = pygame.transform.rotozoom(p.sprites['turret'], 0, 0.7)
+                self.screen.blit(tur, tur.get_rect(center=(x0 + 14, HUD // 2)))
+                self.screen.blit(self.render(self.font_hud, f"P{p.idx + 1}", p.color), (x0 + 30, 11))
+                t = p.tank
+                hp = t.hp if t and t.alive else 0
+                ammo = t.ammo if t and t.alive else 0
+                if self.mode == 'race':
+                    lap = clamp(t.lap + 1, 1, RACE_LAPS) if t else 1
+                    info = "CILJ" if t and t.finished else f"KROG {lap}/{RACE_LAPS}"
+                    self.screen.blit(self.render(self.font_tiny, info, (225, 225, 225)), (x0 + 62, 3))
+                    if t and len(self.players) > 1:
+                        self.screen.blit(self.render(self.font_tiny, ORDINALS[t.place - 1], p.color), (x0 + 128, 3))
                 else:
-                    pygame.draw.circle(self.screen, (90, 90, 95), (cx, HUD // 2), 5, 2)
+                    for i in range(t.max_hp if t else TANK_HP):
+                        col = (230, 70, 60) if i < hp else (70, 70, 75)
+                        self.screen.fill(col, (x0 + 62 + i * 14, 6, 11, 10))
+                empty_flash = t and t.alive and ammo == 0 and int(self.now * 4) % 2
+                for i in range(MAX_AMMO):
+                    col = (230, 185, 70) if i < ammo else ((150, 50, 45) if empty_flash else (60, 60, 65))
+                    self.screen.fill(col, (x0 + 62 + i * 6, 21, 4, 12))
+                if self.mode in ('coop', 'santa'):
+                    self.screen.blit(self.render(self.font_hud, f"x{p.kills}", (230, 230, 230)), (x0 + 140, 11))
+                if self.mode == 'race':
+                    self.screen.blit(self.render(self.font_tiny, f"x{p.kills}", (230, 60, 55)), (x0 + 184, 13))
+                elif t and t.alive and t.special:
+                    ready = t.special_charge <= 0
+                    label = SPECIAL_NAMES[t.special] if ready else f"{SPECIAL_NAMES[t.special]} {math.ceil(t.special_charge)}"
+                    self.screen.blit(self.render(self.font_tiny, label, SPECIAL_COLORS[t.special] if ready else (120, 120, 128)),
+                                     (x0 + 134, 27))
+                for i in range(self.win_score() if self.mode in ('versus', 'race') else 0):
+                    cx = x0 + 134 + i * 14
+                    if i < p.score:
+                        pygame.draw.circle(self.screen, p.color, (cx, HUD // 2), 5)
+                    else:
+                        pygame.draw.circle(self.screen, (90, 90, 95), (cx, HUD // 2), 5, 2)
             if p.pad_id not in self.pads and int(self.now * 2) % 2:
                 img = self.render(self.font_tiny, "NI PADA", (255, 80, 80))
                 self.screen.fill((22, 24, 28), (x0 + 60, 2, 66, HUD - 4))
                 self.screen.blit(img, img.get_rect(center=(x0 + 92, HUD // 2)))
 
+    def draw_santa_hud(self, p, x0):
+        icon = pygame.transform.rotozoom(self.boss_sprites['santa'][('base', 1)], 0, 0.5)
+        self.screen.blit(icon, icon.get_rect(center=(x0 + 14, HUD // 2)))
+        self.screen.blit(self.render(self.font_hud, f"P{p.idx + 1}", p.color), (x0 + 30, 11))
+        self.screen.blit(self.render(self.font_tiny, "BOŽIČEK", (255, 110, 100)), (x0 + 62, 3))
+        b = self.santa
+        self.screen.fill((60, 60, 65), (x0 + 62, 21, 96, 10))
+        if b:
+            self.screen.fill((230, 70, 60), (x0 + 62, 21, int(96 * b.hp / b.max_hp), 10))
+        self.screen.blit(self.render(self.font_hud, f"x{p.kills}", (230, 230, 230)), (x0 + 166, 11))
+
     def draw_overlay(self):
         cy = HUD + ROWS * T // 2
-        if self.mode == 'coop' and self.state in ('countdown', 'play'):
-            left = len(self.ghouls) + self.wave_to_spawn + len(self.bosses) + bool(self.boss_pending)
-            if self.wave:
+        if self.mode in ('coop', 'santa') and self.state in ('countdown', 'play'):
+            if self.mode == 'santa':
+                if self.wave:
+                    elves = len(self.ghouls) + self.wave_to_spawn
+                    self.text(f"RUNDA {self.wave}   •   ŠKRATJE: {elves}", self.font_hud, (230, 220, 200), (W // 2, HUD + 18))
+            elif self.wave:
+                left = len(self.ghouls) + self.wave_to_spawn + len(self.bosses) + bool(self.boss_pending)
                 self.text(f"VAL {self.wave}   •   ŠE {left}", self.font_hud, (230, 220, 200), (W // 2, HUD + 18))
             for k, b in enumerate(self.bosses):   # boss health bars
                 y = HUD + 44 + k * 34
@@ -3988,7 +4509,8 @@ class Game:
                 self.screen.fill((20, 20, 24), (W // 2 - 182, y + 9, 364, 12))
                 self.screen.fill((200, 40, 50), (W // 2 - 180, y + 11, int(360 * b.hp / b.max_hp), 8))
             if self.banner and self.state == 'play':
-                self.text(self.banner[0], self.font_big, (200, 255, 170) if "OČIŠČEN" in self.banner[0] else (255, 120, 90), (W // 2, cy))
+                good = "OČIŠČEN" in self.banner[0] or "PREMAGAN" in self.banner[0]
+                self.text(self.banner[0], self.font_big, (200, 255, 170) if good else (255, 120, 90), (W // 2, cy))
         if self.mode == 'race' and self.state in ('countdown', 'play'):
             m, s = divmod(self.race_time, 60)
             self.text(f"{int(m)}:{s:04.1f}", self.font_hud, (230, 230, 230), (W // 2, HUD + 18))
@@ -4012,6 +4534,9 @@ class Game:
         if self.state == 'countdown':
             n = max(1, math.ceil(self.timer))
             self.text(str(n), self.font_big, (255, 255, 255), (W // 2, cy))
+            if self.mode == 'santa' and self.santa_player:
+                p = self.santa_player
+                self.text(f"{p.cname} (P{p.idx + 1}) JE BOŽIČEK", self.font_med, p.color, (W // 2, cy + 90))
         elif self.state == 'play' and self.go_timer > 0:
             self.text("GREMO!", self.font_big, (255, 230, 120), (W // 2, cy))
         elif self.state == 'roundover':
@@ -4057,11 +4582,15 @@ class Game:
         pygame.draw.rect(self.screen, (28, 32, 44), panel, border_radius=18)
         pygame.draw.rect(self.screen, (240, 210, 110), panel, 3, border_radius=18)
         self.text("MATEMATIČNI ODMOR", self.font_med, (240, 210, 110), (W // 2, 160))
+        self.text(f"Naloga {q.done + 1} od {QUIZ_QUESTIONS}", self.font_tiny, (190, 190, 200), (panel.right - 90, 140), shadow=False)
         lines = self.wrap(q.text, self.font_med, 900)
         y = 250 - (len(lines) - 1) * 24
         for line in lines:
             self.text(line, self.font_med, (255, 255, 255), (W // 2, y))
             y += 50
+        if q.options:
+            self.draw_quiz_options(q)
+            return
         bw, bh, gap = 64, 84, 12
         unit_w = self.font_med.size(q.unit)[0] + 20 if q.unit else 0
         x0 = W // 2 - (QUIZ_DIGITS * bw + (QUIZ_DIGITS - 1) * gap + unit_w) // 2
@@ -4086,6 +4615,28 @@ class Game:
         self.text("Gor / dol: spremeni števko   •   Levo / desno: izberi mesto   •   A ali START: potrdi",
                   self.font_hud, (190, 190, 200), (W // 2, 550), shadow=False)
         self.text("Tipkovnica: številke 0-9, Backspace briše, Enter potrdi", self.font_tiny, (150, 150, 160), (W // 2, 582), shadow=False)
+
+    def draw_quiz_options(self, q):
+        ow, oh = 400, 58
+        for i, opt in enumerate(q.options):
+            rect = pygame.Rect(W // 2 - ow - 10 + (i % 2) * (ow + 20), 325 + (i // 2) * (oh + 14), ow, oh)
+            sel = i == q.choice and q.solved <= 0
+            if q.solved > 0 and i == q.answer:
+                fill, edge, col = (40, 80, 50), (120, 230, 120), (255, 255, 255)
+            elif i in q.wrong:
+                fill, edge, col = (50, 34, 38), (150, 70, 70), (140, 110, 110)
+            elif sel:
+                fill, edge, col = (50, 56, 72), (255, 230, 120), (255, 255, 255)
+            else:
+                fill, edge, col = (38, 42, 56), (90, 96, 112), (220, 220, 220)
+            pygame.draw.rect(self.screen, fill, rect, border_radius=10)
+            pygame.draw.rect(self.screen, edge, rect, 3, border_radius=10)
+            self.text(f"{'abcd'[i]})  {opt}", self.font_med, col, rect.center, shadow=False)
+        if self.quiz_msg:
+            self.text(self.quiz_msg[0], self.font_small, self.quiz_msg[1], (W // 2, 500))
+        self.text("Smeri: izberi odgovor   •   A ali START: potrdi",
+                  self.font_hud, (190, 190, 200), (W // 2, 550), shadow=False)
+        self.text("Tipkovnica: tipke 1-4 izberejo odgovor, Enter potrdi", self.font_tiny, (150, 150, 160), (W // 2, 582), shadow=False)
 
     def draw_scores(self, y):
         parts = [(f"{p.cname} {p.score}", p.color) for p in self.players]
@@ -4152,18 +4703,25 @@ class Game:
             self.text("NAČIN:  BOJ  -  zmaga zadnji preživeli tank", self.font_small, (240, 220, 120), (W // 2, 522))
         elif self.mode == 'coop':
             self.text("NAČIN:  SODELOVANJE  -  skupaj preživite nemrtve", self.font_small, (255, 120, 90), (W // 2, 522))
-        else:
+        elif self.mode == 'race':
             self.text("NAČIN:  DIRKA  -  skoki, drsenje in granate, ki le odbijajo", self.font_small, (120, 210, 255), (W // 2, 522))
+        else:
+            self.text("NAČIN:  BOŽIČEK  -  en igralec je Božiček, ostali ga lovijo s tanki", self.font_small, (140, 230, 150), (W // 2, 522))
         self.text("Y / TAB zamenja način", self.font_tiny, (170, 170, 175), (W // 2, 548), shadow=False)
         self.text(f"Povezani kontrolerji: {n_pads}", self.font_tiny, (150, 150, 155), (W // 2, 568), shadow=False)
         if joined:
-            msg = ("Pritisni START za začetek" if len(joined) > 1 or self.mode != 'versus'
-                   else "Pritisni START za vadbo (za tekmo sta potrebna vsaj 2 igralca)")
+            if len(joined) > 1 or self.mode in ('coop', 'race'):
+                msg = "Pritisni START za začetek"
+            elif self.mode == 'santa':
+                msg = "Za Božička sta potrebna vsaj 2 igralca"
+            else:
+                msg = "Pritisni START za vadbo (za tekmo sta potrebna vsaj 2 igralca)"
             self.text(msg, self.font_small, (255, 255, 255), (W // 2, 590))
         self.text("Tipkovnica P1: WASD vožnja, Q/E merjenje, SPACE vstop+strel, F posebno, X izstop   •   P2: puščice, , . merjenje, R-CTRL vstop+strel, / posebno, DEL izstop   •   ENTER začetek",
                   self.font_tiny, (150, 150, 155), (W // 2, 630), shadow=False)
         goal = {'versus': f"Zmaga, kdor prvi dobi {WIN_SCORE} rund", 'coop': "Val N prinese N pošasti",
-                'race': f"{RACE_LAPS} krogov, zmaga, kdor prvi dobi {RACE_WIN_SCORE} dirke"}[self.mode]
+                'race': f"{RACE_LAPS} krogov, zmaga, kdor prvi dobi {RACE_WIN_SCORE} dirke",
+                'santa': f"Premagan Božiček se vrne s {SANTA_HELPERS} škrati več"}[self.mode]
         quit_hint = "" if WEB else "   •   ESC izhod"
         self.text(f"{goal}   •   B izstop   •   F11 celozaslonsko{quit_hint}",
                   self.font_hud, (150, 150, 155), (W // 2, 660), shadow=False)
@@ -4174,13 +4732,58 @@ class Game:
         """The boss that beat the tanks, large, with a gloat. Built once and drawn as one opaque blit."""
         bg = pygame.Surface((W, H)).convert()
         col = BOSS_COLORS[kind]
-        dark = (10, 8, 14)
+        dark = (8, 14, 38) if kind == 'santa' else (10, 8, 14)   # Santa laughs under a winter night sky
         bg.fill(dark)
         cx, cy = 390, 380
         glow = 0.65 if kind == 'spider' else 0.45     # her legs are dark
         for r in range(520, 0, -8):    # glow behind the boss, opaque rings fading out
             k = (1 - r / 520) ** 2 * glow
             pygame.draw.circle(bg, [int(d + (c - d) * k) for c, d in zip(col, dark)], (cx, cy), r)
+        if kind == 'santa':
+            self.paint_santa_scene(bg, cx, cy)
+        else:
+            self.paint_boss_scene(bg, kind, cx, cy)
+
+        tx = 960
+        font = pygame.font.Font(None, 52)
+        if kind == 'santa':
+            p = self.santa_player
+            self.text(f"{p.cname} BOŽIČEK ZMAGA!", self.font_med, p.color, (tx, 130), bg)
+            self.text("HO-HO-HO!", self.font_med, (255, 215, 90), (tx, 205), bg)
+        else:
+            self.text(BOSS_NAMES[kind], self.font_med, col, (tx, 150), bg)
+        lines = random.choice(BOSS_TAUNTS[kind]).split("\n")
+        for i, line in enumerate(lines):
+            y = 300 - (len(lines) - 1) * 28 + i * 56
+            for dx, dy, c in ((3, 3, (0, 0, 0)), (0, 0, (255, 235, 200))):
+                img = font.render(("„" if i == 0 else "") + line + ("“" if i == len(lines) - 1 else ""), True, c)
+                bg.blit(img, img.get_rect(center=(tx + dx, y + dy)))
+        self.text("TANKI SO PADLI", self.font_small, (255, 110, 90), (tx, 450), bg)
+        if kind == 'santa':
+            n = self.wave - 1
+            self.text(f"Božička ste premagali {n}-krat" if n else "Božička niste premagali niti enkrat",
+                      self.font_hud, (210, 210, 210), (tx, 490), bg)
+            elves = sum(q.kills for q in self.players if q is not self.santa_player)
+            self.text(f"Uničeni škratje: {elves}   •   uničeni tanki: {self.santa_player.kills}",
+                      self.font_hud, (210, 210, 210), (tx, 524), bg)
+        else:
+            total = sum(p.kills for p in self.players)
+            self.text(f"Dosežen val {self.wave}   •   uničenih pošasti: {total}", self.font_hud, (210, 210, 210), (tx, 490), bg)
+        return bg
+
+    def paint_santa_scene(self, bg, cx, cy):
+        rnd = random.Random(7)
+        for _ in range(160):   # falling snow
+            pygame.draw.circle(bg, (205, 215, 240), (rnd.randrange(W), rnd.randrange(H)), rnd.choice((1, 1, 2, 3)))
+        blit_center(bg, make_santa_portrait(), cx, cy - 20)
+        pygame.draw.ellipse(bg, (200, 212, 235), (-400, 585, 1700, 420))   # a snowdrift he sits behind
+        pygame.draw.ellipse(bg, (236, 241, 250), (-400, 598, 1700, 420))
+        for (x, y), (c, r), size in zip(((cx - 205, cy + 250), (cx + 200, cy + 255), (cx - 120, cy + 280)), GIFT_LOOKS, (90, 76, 64)):
+            blit_center(bg, make_gift_sprite(c, r, size), x, y)
+        for kind, x, face in (('elf', 70, 1), ('gnome', 700, -1)):   # two of his helpers, grinning
+            blit_center(bg, make_ghoul_sprites(kind, 4)[('base', face)], x, cy + 230)
+
+    def paint_boss_scene(self, bg, kind, cx, cy):
         big = make_boss_sprites(kind, 9)
         if kind == 'spider':
             for i in range(14):    # a web stretched across the corner behind her
@@ -4210,20 +4813,6 @@ class Game:
             for x, y in ((cx - 260, cy + 180), (cx + 230, cy + 220)):
                 blit_center(bg, big['cat'], x, y)
 
-        tx = 960
-        font = pygame.font.Font(None, 52)
-        self.text(BOSS_NAMES[kind], self.font_med, col, (tx, 150), bg)
-        lines = random.choice(BOSS_TAUNTS[kind]).split("\n")
-        for i, line in enumerate(lines):
-            y = 300 - (len(lines) - 1) * 28 + i * 56
-            for dx, dy, c in ((3, 3, (0, 0, 0)), (0, 0, (255, 235, 200))):
-                img = font.render(("„" if i == 0 else "") + line + ("“" if i == len(lines) - 1 else ""), True, c)
-                bg.blit(img, img.get_rect(center=(tx + dx, y + dy)))
-        self.text("TANKI SO PADLI", self.font_small, (255, 110, 90), (tx, 450), bg)
-        total = sum(p.kills for p in self.players)
-        self.text(f"Dosežen val {self.wave}   •   uničenih pošasti: {total}", self.font_hud, (210, 210, 210), (tx, 490), bg)
-        return bg
-
     def draw(self):
         if self.state == 'coopover' and self.taunt:
             self.screen.blit(self.taunt, (0, 0))
@@ -4243,7 +4832,7 @@ class Game:
     def self_check(self):
         """Play a few seconds of every mode with idle keyboard players, then return."""
         self.players = [Player(0, 'kb1'), Player(1, 'kb2')]
-        for mode in ('versus', 'coop', 'race'):
+        for mode in ('versus', 'coop', 'race', 'santa'):
             self.mode = mode
             self.start_match()
             for _ in range(240):
