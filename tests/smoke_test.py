@@ -8,6 +8,8 @@ import random
 import sys
 import time
 
+# Slovenian names (RDEČI) in the output; the Windows console is cp1252
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
