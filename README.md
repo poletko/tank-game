@@ -42,7 +42,7 @@ F11 toggles fullscreen. ESC returns to the lobby, or quits from the lobby.
 - Controllers can be plugged in at any time. If one disconnects mid-match, press A on any free pad to take over that player.
 
 ## Co-op mode
-Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VERSUS, CO-OP, RACE and SANTA. All the tanks team up against waves of mummies, zombies, vampires and ghosts.
+Press **Y** (controller) or **Tab** (keyboard) in the lobby to cycle through VERSUS, CO-OP, RACE, SANTA and BUILDER (NAGAJIVEC). All the tanks team up against waves of mummies, zombies, vampires and ghosts.
 - Wave 1 has one ghoul, and each cleared wave adds one more (wave N brings N ghouls).
 - A ghoul takes 5 hits to kill and regenerates 1 hit every 10 s. Each hit slows it to half speed for 3 s.
 - Ghouls move at 60% of tank speed and chase the closest tank. Walkers go around walls and claw through bricks if they have to. Ghosts float straight through walls.
@@ -87,8 +87,18 @@ The fourth mode in the lobby, for 2 or more players. One player flies **Santa** 
 - The first round is Santa alone. Every time the tanks beat him, his elves vanish, the tanks are repaired, destroyed tanks come back, and after a short break Santa returns with **5 more elves** than before: 5, then 10, then 15... There are five kinds of elf: the classic green one with a bell on his hat, the candy-cane elf (fast), the frost elf in a fur hood (3 hits), the gift elf, and the bearded gnome (slow, but takes 4 hits). The rest take 2 hits. Like ghouls, elves chase the nearest tank and claw through bricks.
 - It goes on until Santa wins by destroying every tank. Then a big laughing Santa fills the screen and gloats.
 
+## Builder mode
+The fifth mode in the lobby (NAGAJIVEC, "the troublemaker"), for 2 or more players. Everyone but one player drives a tank and holds off waves of zombies, mummies, vampires and ghosts. The waves keep growing: 3 monsters in the first wave, then 2 more in each wave after it, and no bosses. The player without a tank is the troublemaker and builds brick walls to get in the tanks' way. Players take turns at it, one match each.
+- Move the cursor with the left stick (keyboard: as for driving) and press or hold fire (or A) to lay a brick.
+- Walls can't go within 3 tiles of a tank. When the cursor comes close, a red circle shows a tank's no-build zone, and the cursor turns red with a cross wherever a brick can't go. Bricks can't go on monsters, crates or pickups either.
+- After each brick there's a 3 second wait before the next one. The bar in the troublemaker's HUD slot and the ring around the cursor show it.
+- The troublemaker's bricks crumble after 30 seconds. A small bar on each one shows how long it has left.
+- Tanks can shoot through the bricks (2 hits each), and the monsters claw through them.
+- Tanks have 5 health and no friendly fire. Every cleared wave repairs them, and destroyed tanks come back for the next wave.
+- Every tank destroyed counts for the troublemaker. The match ends when every tank is gone.
+
 ## Math break
-After every 3 minutes of play, a math break with 3 questions appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian. Most are about division (sums, missing divisors, word problems) and converting units of length, mass, volume, time and money; the rest cover adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, order of operations, 1/n of a number, unit conversions, perimeter, rounding, missing numbers and short word problems. At least one question per break is a multiple choice estimate ("About how long is one step?" with four options in different units). Pick an option with the stick, D-pad or arrows (or keys 1-4) and confirm with A or Enter. A number question allows 3 tries and a multiple choice question 2, then the answer is shown and a new question comes in its place.
+After every 3 minutes of play, a math break with 3 questions appears at the next pause in the action: the end of a round or race, the gap between co-op waves, or the lobby. It never pops up mid-fight. The questions match a finished 4th grade in Slovenia and are in Slovenian. Most are about division (sums, missing divisors, word problems) and converting units of length, mass, volume, time and money; the rest cover adding and subtracting up to 10 000, the times tables, multiplying and dividing by a one-digit number, division with a remainder, order of operations, fractions of a number (also with numerators above 1, like 3/4 of 20), unit word problems, perimeter, rounding, place value, number sequences, missing numbers and short word problems. At least one question per break is multiple choice: an estimate ("About how long is one step?" with four options in different units), a quick fact (cube corners, minutes in an hour), a fraction comparison or picking the right division. Pick an option with the stick, D-pad or arrows (or keys 1-4) and confirm with A or Enter. A number question allows 3 tries and a multiple choice question 2, then the answer is shown and a new question comes in its place.
 - Any player can answer. The answer goes into five digit boxes: stick or D-pad **up/down** changes the selected digit, **left/right** moves between digits, and **A** or **START** submits. On the keyboard you can also type the digits, use Backspace, and press Enter.
 - The game stays frozen until the answer is right. After 3 wrong tries the solution is shown and a new question is asked.
 

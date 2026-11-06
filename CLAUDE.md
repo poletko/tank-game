@@ -54,7 +54,7 @@ Always run the smoke test after changes. For visual changes, also look at the sc
      pad pressing A takes over a player whose pad disconnected (`claim_orphans`).
 
 ## Co-op mode
-- `Game.mode` is `'versus'`, `'coop'`, `'race'` or `'santa'`. It's cycled in the lobby by the Y button (the `'y'` pad button) or Tab (handled as a KEYDOWN event, because both keyboard pads would otherwise toggle it twice).
+- `Game.mode` is `'versus'`, `'coop'`, `'race'`, `'santa'` or `'builder'`. `HORDE_MODES` (coop, santa, builder) share the co-op rules; `SOLO_MODES` (santa, builder) have one tankless `solo_player`. It's cycled in the lobby by the Y button (the `'y'` pad button) or Tab (handled as a KEYDOWN event, because both keyboard pads would otherwise toggle it twice).
 - Tuning lives in the `COOP_*`, `GHOUL_*`, `WAVE_BREAK` and `AMMO_DROP*` constants. The user specified these rules, so keep them unless asked: wave N spawns N ghouls; ghouls take 5 hits, regenerate 1 hit per 10 s, slow to 50% for 3 s per hit, move at 60% of tank speed and chase the closest tank.
 - `Ghoul` is the entity. The logic is in `update_waves` → `start_wave` / `spawn_ghoul`, then `update_ghouls`, `hit_ghoul`, `kill_ghoul` and `update_pickups`.
 - Pathing: `compute_flow` is a Dijkstra distance field from all live tanks (bricks cost 6, steel and water are blocked), recomputed every 0.25 s. Walkers step to the downhill neighbour tile (`ghoul_step_target`) and claw bricks in the way. Ghosts ignore walls and are drawn above bushes.
@@ -77,7 +77,7 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 
 ## Santa mode
 - `mode == 'santa'` reuses the co-op machinery (tank HP, no friendly fire, `targets()`, crates, packets, `coopover`).
-  `start_match` picks `self.santa_player` with `pick_santa` (players take turns); that player has no tank. Needs
+  `start_match` picks `self.solo_player` with `pick_solo` (players take turns); that player has no tank. Needs
   2+ players (`update_lobby` refuses to start otherwise).
 - The user asked for these rules: Santa is player-controlled, flies like the witch, throws exploding gifts and
   laughs. Each time the tanks beat him he returns with `SANTA_HELPERS` (5) more elves, until he wins (all tanks
@@ -89,9 +89,20 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   throws can be diagonal.
 - Rounds: `update_santa_round` / `start_santa_round` use `wave`, `wave_break` and `wave_to_spawn` as in co-op.
   `kill_boss` on Santa calls `santa_beaten` (elves and gifts vanish, tanks repaired). Every tank killed in this mode
-  counts for `santa_player.kills` and makes him laugh (`santa_laugh`, rate-limited by `SANTA_LAUGH_GAP`).
+  counts for `solo_player.kills` and makes him laugh (`santa_laugh`, rate-limited by `SANTA_LAUGH_GAP`).
 - Elves are `Ghoul`s with kinds from `ELF_KINDS`, drawn in `make_ghoul_sprites` (smaller, `N = 28`); hits and speed
   come from `ELF_STATS` through `Ghoul.max_hp` and `Ghoul.speed`.
+
+## Builder mode
+- `mode == 'builder'` (NAGAJIVEC on screen) is co-op waves (`update_waves`/`start_wave`) with a tankless `solo_player`
+  (picked with `pick_solo`, like Santa). The user asked for these rules: waves keep growing
+  (`BUILDER_WAVE_START` + `BUILDER_WAVE_GROWTH` per wave, no bosses), and the solo player lays brick walls but
+  never within `BUILDER_MIN_DIST` of a tank. Bricks come one per `BUILDER_PLACE_CD` (3 s) and crumble after
+  `BUILDER_BRICK_LIFE` (30 s).
+- `update_builder` moves `self.cursor` from the pad, and holding fire calls `build` when `can_build` allows it (an empty
+  interior tile with no tank within `BUILDER_MIN_DIST` and no ghoul, crate, packet or pickup on it) and
+  `place_cd` has run out. `build` sets the grid and `brick_hp`, clears `arena.ground` and `flow`, and records the
+  brick in `self.built` (tile to seconds left). At zero, `crumble` removes it, unless the tile is no longer a brick. `draw_builder_cursor` and `draw_builder_hud` draw it.
 
 ## Special weapons
 - `Tank.special` is `'rocket'`, `'mortar'` or `'tesla'`. `special_recharge` is 0 for co-op packets (one shot, then
@@ -137,12 +148,12 @@ Always run the smoke test after changes. For visual changes, also look at the sc
   `Quiz` at the next `at_break()`: lobby, roundover, matchover, coopover, or an empty co-op wave break. While
   `self.quiz` is set, `update()` only runs `update_quiz`, so the game is frozen. The clock resets when a question
   is answered correctly. The user asked for this: keep it mandatory and never open it mid-action.
-- `make_question()` returns `(text, answer, unit)` in Slovenian at the level of a finished 4th grade, weighted towards division and unit conversion (the user asked for this); answers must
+- `make_question()` returns `(text, answer, unit)` in Slovenian at the level of a finished 4th grade, weighted towards division and unit conversion, with fractions mostly using numerators above 1 (the user asked for this); answers must
   fit `QUIZ_DIGITS`. The smoke test checks 5000 random questions. Entry uses the pad's edge-triggered
   `up/down/left/right` buttons (derived from the stick and D-pad in `Pad.poll`), and keyboard digits come in as
   KEYDOWN events in `run()`.
 - A break asks `QUIZ_QUESTIONS` (3) questions, at least one a multiple choice estimate (the user asked for this,
-  with at least 4 options): `make_estimate()` picks from `ESTIMATES` (question, right answer, wrong answers).
+  with at least 4 options): `make_estimate()` picks from `ESTIMATES` (question, right answer, wrong answers; besides estimates it also holds quick facts, fractions and divisions).
   `Quiz.options` is set for those; then `answer`/`choice` are option indices, picked on a 2x2 grid or with keys 1-4,
   with `QUIZ_CHOICE_TRIES` tries. `q.done` counts solved questions; the clock resets after the last one.
 

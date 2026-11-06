@@ -431,9 +431,9 @@ g.update(1 / 60)
 assert g.state == "lobby", "Santa needs at least two players"
 g.pads[fake[0]].pressed = set()
 g.players = [tanks.Player(i, pid) for i, pid in enumerate(fake[:3])]
-g.santa_player = None
+g.solo_player = None
 g.start_match()
-first = g.santa_player
+first = g.solo_player
 hunters = [p for p in g.players if p is not first]
 assert first.tank is None and all(p.tank.hp == tanks.COOP_TANK_HP for p in hunters)
 for p in g.players:
@@ -519,7 +519,7 @@ if shots:
 # the next match, the next player is Santa
 g.to_lobby()
 g.start_match()
-assert g.santa_player is g.players[(g.players.index(first) + 1) % len(g.players)]
+assert g.solo_player is g.players[(g.players.index(first) + 1) % len(g.players)]
 
 # and a stretch with random input, for crashes
 t0, frames = time.time(), 0
@@ -539,8 +539,107 @@ for i in range(60 * 90):
     if g.state == "coopover":
         break
 fps = frames / (time.time() - t0)
-print(f"santa: frames={frames} fps={fps:.0f} round={g.wave} santa kills={g.santa_player.kills}")
+print(f"santa: frames={frames} fps={fps:.0f} round={g.wave} santa kills={g.solo_player.kills}")
 print("santa ok")
+
+# ---- builder: one player lays bricks (never near a tank), the others hold off growing zombie waves
+g.to_lobby()
+g.mode = "builder"
+g.players = [tanks.Player(0, fake[0])]
+g.pads[fake[0]].pressed = {"start"}
+g.update(1 / 60)
+assert g.state == "lobby", "builder mode needs at least two players"
+g.pads[fake[0]].pressed = set()
+g.players = [tanks.Player(i, pid) for i, pid in enumerate(fake[:3])]
+g.solo_player = None
+g.start_match()
+builder = g.solo_player
+defenders = [p for p in g.players if p is not builder]
+assert builder.tank is None and all(p.tank.hp == tanks.COOP_TANK_HP for p in defenders)
+for p in g.players:
+    g.pads[p.pad_id].move, g.pads[p.pad_id].held, g.pads[p.pad_id].pressed, g.pads[p.pad_id].aim = (0, 0), set(), set(), None
+while g.state != "play" or g.wave < 1:
+    g.update(1 / 60)
+assert g.wave_to_spawn + len(g.ghouls) == tanks.BUILDER_WAVE_START and not g.boss_pending
+g.ghouls.clear()
+g.wave_to_spawn = 0
+
+# placing: a brick at the cursor, but none within BUILDER_MIN_DIST of a tank, and one per BUILDER_PLACE_CD
+walled_field()
+a = defenders[0].tank
+a.x, a.y = tanks.tile_center(5, 5)
+defenders[1].tank.x, defenders[1].tank.y = tanks.tile_center(25, 14)
+bpad = g.pads[builder.pad_id]
+g.cursor = list(tanks.tile_center(15, 5))
+g.place_cd = 0
+bpad.held = {"fire"}
+g.update_builder(1 / 60)
+assert g.arena.grid[5][15] == tanks.BRICK and g.arena.brick_hp[(15, 5)] == tanks.BRICK_HP
+g.cursor = list(tanks.tile_center(16, 5))
+g.update_builder(1 / 60)
+assert g.arena.grid[5][16] == tanks.EMPTY, "the next brick has to wait for the cooldown"
+for _ in range(int(tanks.BUILDER_PLACE_CD * 60) + 2):
+    g.update_builder(1 / 60)
+assert g.arena.grid[5][16] == tanks.BRICK, "after the cooldown, holding fire lays the next one"
+g.cursor = list(tanks.tile_center(7, 5))   # 80 px from the tank
+g.place_cd = 0
+g.update_builder(1 / 60)
+assert g.arena.grid[5][7] == tanks.EMPTY, "no walls right next to a tank"
+bpad.held = set()
+g.cursor = list(tanks.tile_center(15, 9))
+bpad.move = (1.0, 0.0)
+for _ in range(30):
+    g.update_builder(1 / 60)
+assert abs(g.cursor[0] - (tanks.tile_center(15, 9)[0] + tanks.BUILDER_SPEED * 0.5)) < 2
+bpad.move = (0, 0)
+g.draw()
+if shots:
+    pygame.image.save(g.screen, os.path.join(shots, "builder.png"))
+# the builder's bricks crumble after BUILDER_BRICK_LIFE; the map's own bricks stay
+g.arena.grid[3][20] = tanks.BRICK
+g.arena.brick_hp[(20, 3)] = tanks.BRICK_HP
+for _ in range(int(tanks.BUILDER_BRICK_LIFE * 60) + 2):
+    g.update_builder(1 / 60)
+assert g.arena.grid[5][15] == tanks.EMPTY and g.arena.grid[5][16] == tanks.EMPTY and not g.built
+assert (15, 5) not in g.arena.brick_hp and g.arena.grid[3][20] == tanks.BRICK
+
+# waves grow: wave N brings BUILDER_WAVE_START + BUILDER_WAVE_GROWTH * (N - 1) zombies, never a boss
+g.wave_break = 0.01
+g.state = "play"
+g.update(1 / 60)
+assert g.wave == 2 and g.wave_to_spawn == tanks.BUILDER_WAVE_START + tanks.BUILDER_WAVE_GROWTH
+assert builder.tank is None, "the builder never gets a tank"
+
+# the builder wins once every tank is gone
+kills = builder.kills
+for p in defenders:
+    g.kill(p.tank)
+assert builder.kills == kills + 2
+for _ in range(240):
+    g.update(1 / 60)
+assert g.state == "coopover"
+g.draw()
+
+# random soak, for crashes
+g.to_lobby()
+g.start_match()
+assert g.solo_player is g.players[(g.players.index(builder) + 1) % len(g.players)]
+t0, frames = time.time(), 0
+for i in range(60 * 60):
+    for p in g.players:
+        pad = g.pads[p.pad_id]
+        pad.move = (random.uniform(-1, 1), random.uniform(-1, 1))
+        pad.aim = random.uniform(-3.2, 3.2)
+        pad.held = {"fire"} if random.random() < 0.7 else set()
+        pad.pressed = {"fire2"} if random.random() < 0.05 else set()
+    g.update(1 / 60)
+    g.draw()
+    frames += 1
+    if g.state == "coopover":
+        break
+fps = frames / (time.time() - t0)
+print(f"builder: frames={frames} fps={fps:.0f} wave={g.wave} builder kills={g.solo_player.kills}")
+print("builder ok")
 
 # ---- race: 6 bots follow the centerline and shoot whoever is close
 g.to_lobby()
@@ -597,6 +696,7 @@ assert a.vx > 200 and a.hp == tanks.TANK_HP
 
 # touching or shooting a spectator splatters it into limbs
 gh = g.spectators[0]
+g.spectators = [o for o in g.spectators if o is gh or math.hypot(o.x - gh.x, o.y - gh.y) > 80]   # just this one
 b.x, b.y, b.z, b.vx, b.vy = gh.x, gh.y, 0.0, 100.0, 0.0
 n_before, kills_before = len(g.spectators), b.player.kills
 g.update_spectators(1 / 60)
@@ -665,6 +765,7 @@ def press(*names):
 
 timer = g.timer
 q.kinds = ["num", "choice", "num"]   # fixed, so both kinds get tested
+q.new_question()
 press("a")   # 00000 is never the answer to these questions... unless it is
 if q.answer != 0:
     assert g.quiz and q.tries == 1 and g.timer == timer, "a wrong answer keeps the game frozen"

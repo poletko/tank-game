@@ -4,8 +4,9 @@
 
 Left stick: drive   Right stick: aim turret   RT / RB / A: fire   LT / LB / X: special weapon
 START: begin match / pause   B: leave lobby   BACK (in pause): quit to lobby
-Y / TAB in the lobby cycles VERSUS, CO-OP (tanks vs waves of undead), RACE and SANTA (one player flies Santa
-and throws exploding gifts, the others hunt him with tanks).
+Y / TAB in the lobby cycles VERSUS, CO-OP (tanks vs waves of undead), RACE, SANTA (one player flies Santa
+and throws exploding gifts, the others hunt him with tanks) and BUILDER (one player lays walls, the others fight
+ever bigger zombie waves).
 Keyboard (two players): P1 WASD + Q/E turret + SPACE fire + F special + X leave,
 P2 arrows + ,/. turret + RCTRL fire + / special + DELETE leave
 ENTER starts / pauses. Up to 6 players in total.
@@ -132,6 +133,14 @@ SANTA_ELF_GAP = 0.3         # seconds between elves arriving
 SANTA_THROW_CD = 0.8
 SANTA_THROW_MIN, SANTA_THROW_MAX = 70, 420
 SANTA_AIM_SPEED = 380       # how fast the landing circle walks out while the throw button is held
+BUILDER_WAVE_START = 3      # builder mode: wave N brings 3 + 2 * (N - 1) zombies, no bosses
+BUILDER_WAVE_GROWTH = 2
+BUILDER_SPEED = 430         # px/s of the builder's cursor
+BUILDER_MIN_DIST = 3 * T    # no new walls this close to a tank (the user asked for this)
+BUILDER_PLACE_CD = 3.0      # seconds between two bricks (the user asked for this)
+BUILDER_BRICK_LIFE = 30.0   # the builder's bricks crumble after this long (the user asked for this)
+HORDE_MODES = ('coop', 'santa', 'builder')   # tanks against monsters: no friendly fire, waves, `coopover`
+SOLO_MODES = ('santa', 'builder')            # one player has no tank and plays against the others
 SANTA_LAUGH_GAP = 3.0       # he laughs at most this often (except when a tank blows up)
 GIFT_SPEED = 360
 GIFT_FUSE = 0.6
@@ -292,9 +301,9 @@ def make_question():
     """A math question at the level of a finished 4th grade in Slovenia: (text, answer, unit)."""
     r = random.randint
     # mostly division and unit conversion, the rest keeps the other topics fresh
-    kind = random.choice(('div', 'div', 'div', 'div', 'divword', 'divword', 'units', 'units', 'units', 'units',
-                          'units', 'add', 'sub', 'table', 'mul', 'fraction', 'perimeter', 'order', 'round',
-                          'missing', 'word'))
+    kind = random.choice(('div', 'div', 'div', 'div', 'divword', 'divword', 'divword', 'rem', 'units', 'units',
+                          'units', 'units', 'units', 'unitword', 'add', 'sub', 'table', 'mul', 'fraction',
+                          'perimeter', 'order', 'round', 'missing', 'word', 'word', 'seq', 'place'))
     if kind == 'add':
         a = r(1000, 8999)
         b = r(100, 9999 - a)
@@ -330,11 +339,52 @@ def make_question():
             (f"Kolikokrat gre {b} v {q * b}?", q, ""),
             (f"Koliko je polovica od {2 * q * b}?", q * b, ""),
             (f"Koliko je četrtina od {4 * q * b}?", q * b, ""),
+            (f"{q * b} učencev se razporedi v {b} enako velikih ekip. Koliko učencev je v eni ekipi?", q, ""),
+            (f"{q * b} jabolk zložimo v vrečke po {b}. Koliko vrečk potrebujemo?", q, ""),
+            (f"Avto ima 4 kolesa. Na parkirišču naštejemo {4 * q} koles. Koliko je avtomobilov?", q, ""),
+            (f"Pajek ima 8 nog. Skupaj naštejemo {8 * q} nog. Koliko je pajkov?", q, ""),
+            (f"{max(b, 5)} prijateljev si enako razdeli {q * max(b, 5) * 10} €. Koliko evrov dobi vsak?", q * 10, "€"),
+            (f"Teden ima 7 dni. Koliko tednov je {7 * q} dni?", q, ""),
+            (f"Tovornjak v {b} vožnjah odpelje {q * b * 100} kg peska. Koliko kg odpelje v eni vožnji?",
+             q * 100, "kg"),
+            (f"Ogrlica ima {q * b} kroglic v {b} barvah, vsake barve enako. Koliko kroglic je ene barve?", q, ""),
+            (f"Koliko je tretjina od {3 * q * b}?", q * b, ""),
+            (f"Koliko je desetina od {10 * q * b}?", q * b, ""),
+            (f"Katero število je {b}-krat manjše od {q * b}?", q, ""),
+            (f"Trak dolg {q * b * 10} cm razrežemo na kose po {b * 10} cm. Koliko kosov dobimo?", q, ""),
+            (f"Kino ima {q * b} sedežev v {b} enakih vrstah. Koliko sedežev je v eni vrsti?", q, ""),
+        ))
+    if kind == 'rem':
+        b = r(2, 9)
+        q, m = r(3, 30), r(1, b - 1)
+        n = q * b + m
+        return random.choice((
+            (f"Kolikšen je ostanek pri deljenju {n} : {b}?", m, ""),
+            (f"{n} : {b} = ? (ostanek {m})", q, ""),
+            (f"{n} bonbonov razdelimo med {b} otrok, vsak dobi enako. Koliko bonbonov ostane?", m, ""),
+            (f"{n} učencev se vozi v čolnih po {b}. Koliko čolnov je polnih?", q, ""),
+            (f"{n} učencev se vozi v čolnih po {b}. Koliko čolnov potrebujejo za vse?", q + 1, ""),
         ))
     if kind == 'fraction':
         d = r(2, 10)
-        n = d * r(2, 12)
-        return f"Koliko je 1/{d} od {n}?", n // d, ""
+        p = r(2, d - 1) if d > 2 and random.random() < 0.75 else 1   # numerator, mostly more than 1
+        part = r(2, 12)
+        n = d * part
+        hd = random.choice((3, 4, 5, 6, 10, 12))
+        hp = r(2, hd - 1)
+        gd = random.choice((4, 5, 10))
+        gp = r(2, gd - 1)
+        return random.choice((
+            (f"Koliko je {p}/{d} od {n}?", p * part, ""),
+            (f"Koliko je {p}/{d} od {n * 10}?", p * part * 10, ""),
+            (f"Torta ima {n} koščkov. Pojedli smo {p}/{d} torte. Koliko koščkov smo pojedli?", p * part, ""),
+            (f"Razred ima {n} učencev. {p}/{d} jih je deklic. Koliko je deklic?", p * part, ""),
+            (f"Pot je dolga {n * 100} m. Prehodili smo {p}/{d} poti. Koliko metrov smo prehodili?",
+             p * part * 100, "m"),
+            (f"Koliko minut je {hp}/{hd} ure?", hp * 60 // hd, "min"),
+            (f"{p}/{d} števila je {p * part}. Katero je to število?", n, ""),
+            (f"Koliko gramov je {gp}/{gd} kg?", gp * 1000 // gd, "g"),
+        ))
     if kind == 'units':
         a, b = r(2, 9), r(11, 99)
         return random.choice((
@@ -363,6 +413,45 @@ def make_question():
             (f"{a * 24} h = ? dni", a, "dni"),
             (f"{a} € {b} centov = ? centov", a * 100 + b, "centov"),
             (f"{a * 100} centov = ? €", a, "€"),
+            (f"{a} dm = ? cm", a * 10, "cm"),
+            (f"{a * 10} cm = ? dm", a, "dm"),
+            (f"{a} cm = ? mm", a * 10, "mm"),
+            (f"{a} km = ? m", a * 1000, "m"),
+            (f"{a} m {b % 10} dm = ? dm", a * 10 + b % 10, "dm"),
+            (f"{a} dm {b % 10} cm = ? cm", a * 10 + b % 10, "cm"),
+            (f"{a} cm {b % 10} mm = ? mm", a * 10 + b % 10, "mm"),
+            (f"{a * 100} mm = ? dm", a, "dm"),
+            (f"{a} kg = ? dag", a * 100, "dag"),
+            (f"{a * 10} g = ? dag", a, "dag"),
+            (f"{a * 1000} kg = ? t", a, "t"),
+            (f"{a} t {b * 10} kg = ? kg", a * 1000 + b * 10, "kg"),
+            (f"{a} l = ? dl", a * 10, "dl"),
+            (f"{a} dl = ? ml", a * 100, "ml"),
+            (f"{a * 1000} ml = ? l", a, "l"),
+            (f"{a * 100} l = ? hl", a, "hl"),
+            (f"{a} h = ? min", a * 60, "min"),
+            (f"{a % 5 + 1} min {b % 60} s = ? s", (a % 5 + 1) * 60 + b % 60, "s"),
+            (f"{a + 4} tednov = ? dni", (a + 4) * 7, "dni"),
+            (f"{a * 7} dni = ? tednov", a, "tednov"),
+            (f"{a + 4} let = ? mesecev", (a + 4) * 12, "mesecev"),
+            (f"{a * 12} mesecev = ? let", a, "let"),
+            (f"{a} € = ? centov", a * 100, "centov"),
+        ))
+    if kind == 'unitword':
+        a, b = r(2, 9), r(2, 9)
+        return random.choice((
+            (f"Pot do šole je dolga {a} km {b * 100} m. Koliko metrov je to?", a * 1000 + b * 100, "m"),
+            (f"Vreča krompirja tehta {a} kg. Koliko gramov je to?", a * 1000, "g"),
+            (f"V vrču je {a} l soka. Koliko kozarcev po 2 dl napolnimo?", a * 5, ""),
+            (f"Film traja {a % 2 + 1} h {b * 5} min. Koliko minut traja?", (a % 2 + 1) * 60 + b * 5, "min"),
+            (f"Desko dolgo {a} m razžagamo na kose po 50 cm. Koliko kosov dobimo?", a * 2, ""),
+            (f"Za {a} € kupimo čokolade po 50 centov. Koliko čokolad kupimo?", a * 2, ""),
+            (f"Paket moke tehta 1 kg. Za palačinke porabimo {b * 100} g. Koliko gramov ostane?", 1000 - b * 100, "g"),
+            (f"Odmor traja {b * 5} min. Koliko sekund je to?", b * 300, "s"),
+            (f"Nina je stara {a + 4} let. Koliko mesecev je to?", (a + 4) * 12, "mesecev"),
+            (f"Steklenica ima 1 l vode. Popijemo {b} dl. Koliko dl ostane?", 10 - b, "dl"),
+            (f"Miza je dolga {a} m {b * 10} cm. Koliko centimetrov je to?", a * 100 + b * 10, "cm"),
+            (f"Zabojnik tehta {a} t. Koliko kilogramov je to?", a * 1000, "kg"),
         ))
     if kind == 'perimeter':
         a, b = r(2, 20), r(2, 20)
@@ -384,6 +473,21 @@ def make_question():
         return random.choice(((f"Katero število manjka?   □ + {b} = {a + b}", a),
                               (f"Katero število manjka?   {k} · □ = {k * m}", m),
                               (f"Katero število manjka?   {a + b} - □ = {a}", b)))[0:2] + ("",)
+    if kind == 'seq':
+        a, d = r(2, 50), r(2, 12)
+        if random.random() < 0.5:
+            nums = [a + d * i for i in range(5)]
+        else:
+            a += d * 5
+            nums = [a - d * i for i in range(5)]
+        return f"Nadaljuj zaporedje:   {', '.join(map(str, nums[:4]))}, ?", nums[4], ""
+    if kind == 'place':
+        n = r(1000, 99999)
+        name, p = random.choice((("enic", 1), ("desetic", 10), ("stotic", 100), ("tisočic", 1000)))
+        return random.choice((
+            (f"Katera števka je na mestu {name} v številu {fmt(n)}?", n // p % 10, ""),
+            (f"Koliko vseh {name} je v številu {fmt(n)}?", n // p, ""),
+        ))
     k, m = r(2, 6), r(5, 8)
     a, b, c = r(30, 90), r(5, 25), r(5, 25)
     p, n = r(2, 9), r(5, 12)
@@ -399,6 +503,20 @@ def make_question():
         (f"Teden ima 7 dni. Koliko dni je v {n} tednih?", 7 * n, ""),
         (f"Knjiga ima {pages} strani. Lana je prebrala {read} strani. Koliko strani mora še prebrati?", pages - read, ""),
         (f"Mama je kupila {n} jabolk po {p * 10} centov. Koliko centov je plačala?", n * p * 10, "centov"),
+        (f"Lan ima {a} €. Kupi žogo za {b} €. Koliko evrov mu ostane?", a - b, "€"),
+        (f"Na vsaki od {k} polic je {n} knjig. Koliko je vseh knjig?", k * n, ""),
+        (f"Ema je stara {n} let, njen dedek pa {m}-krat toliko. Koliko let je star dedek?", n * m, ""),
+        (f"Ura kaže {n} h. Koliko bo ura čez {k} h?", n + k, "h"),
+        (f"V vrtcu je {a} otrok. Deklic je {b}. Koliko je dečkov?", a - b, ""),
+        (f"Pek je spekel {a + b + c} žemelj. Zjutraj jih je prodal {a}, popoldne {b}. Koliko jih je ostalo?", c, ""),
+        (f"Trikotnik ima vse stranice dolge {n} cm. Koliko meri njegov obseg?", 3 * n, "cm"),
+        (f"Kokoš znese {p} jajc na teden. Koliko jajc znese v {n} tednih?", p * n, ""),
+        (f"V avtobusu je {a} potnikov. Koliko potnikov je v {k} takih avtobusih?", a * k, ""),
+        (f"Žiga je star {n} let. Koliko bo star čez {m} let?", n + m, ""),
+        (f"Na dvorišču je {n} dvokoles in {p + 3} triciklov. Koliko koles imajo vsi skupaj?", 2 * n + 3 * (p + 3), ""),
+        (f"Kvadrat ima obseg {4 * n} cm. Kako dolga je njegova stranica?", n, "cm"),
+        (f"Leto ima 12 mesecev. Koliko mesecev je v {k} letih?", 12 * k, ""),
+        (f"Koliko je {k}-krat večje od {a}?", k * a, ""),
     ))
 
 
@@ -431,6 +549,96 @@ ESTIMATES = (
     ("Približno koliko časa trajajo poletne počitnice?", "2 meseca", ("2 dni", "2 h", "2 min", "2 leti")),
     ("Približno koliko časa spiš ponoči?", "9 h", ("9 min", "9 s", "9 dni", "90 h")),
     ("Približno koliko časa traja nogometna tekma?", "90 min", ("90 s", "90 h", "9 min", "9 dni")),
+    # more lengths
+    ("Približno koliko je dolga dlan odraslega?", "2 dm", ("2 mm", "2 m", "20 m", "2 km")),
+    ("Približno koliko je visoka miza?", "75 cm", ("75 mm", "75 m", "7 cm", "750 m")),
+    ("Približno koliko je visoka hiša z dvema nadstropjema?", "8 m", ("8 cm", "8 dm", "80 m", "8 km")),
+    ("Približno koliko je dolga mravlja?", "5 mm", ("5 cm", "5 dm", "5 m", "50 cm")),
+    ("Približno koliko je široka vrata?", "90 cm", ("9 cm", "90 mm", "9 m", "90 m")),
+    ("Približno koliko je dolg šolski avtobus?", "12 m", ("12 cm", "12 dm", "120 m", "12 km")),
+    ("Približno koliko je visoka žirafa?", "5 m", ("5 cm", "5 dm", "50 m", "500 m")),
+    ("Približno koliko je visok Triglav?", "2864 m", ("2864 cm", "2864 km", "286 m", "28 m")),
+    ("Približno koliko je od Ljubljane do Maribora?", "130 km", ("130 m", "13 m", "1300 km", "130 cm")),
+    ("Približno koliko je dolg kovanec za 1 €?", "2 cm", ("2 mm", "2 dm", "2 m", "20 cm")),
+    ("Približno koliko je dolga radirka?", "4 cm", ("4 mm", "4 dm", "4 m", "40 cm")),
+    ("Približno koliko je dolga tabla v učilnici?", "4 m", ("4 cm", "4 dm", "40 m", "4 km")),
+    ("Približno koliko je dolg olimpijski bazen?", "50 m", ("50 cm", "5 m", "500 m", "50 km")),
+    ("Približno koliko je dolg list A4?", "30 cm", ("30 mm", "3 cm", "3 m", "30 m")),
+    ("Približno koliko je visok stol?", "45 cm", ("45 mm", "4 cm", "45 m", "450 cm")),
+    ("Približno koliko je dolg krokodil?", "4 m", ("4 cm", "4 dm", "40 m", "4 km")),
+    # more masses
+    ("Približno koliko tehta čokolada?", "100 g", ("100 kg", "1 g", "10 kg", "1 t")),
+    ("Približno koliko tehta kokošje jajce?", "60 g", ("6 g", "60 kg", "6 kg", "600 g")),
+    ("Približno koliko tehta mačka?", "4 kg", ("4 g", "40 g", "400 kg", "4 t")),
+    ("Približno koliko tehta kolo?", "15 kg", ("15 g", "150 g", "150 kg", "15 t")),
+    ("Približno koliko tehta svinčnik?", "5 g", ("5 kg", "50 kg", "5 dag", "5 t")),
+    ("Približno koliko tehta vreča krompirja?", "10 kg", ("10 g", "10 dag", "100 kg", "10 t")),
+    ("Približno koliko tehta odrasel konj?", "500 kg", ("500 g", "50 g", "5 kg", "50 t")),
+    ("Približno koliko tehta polna cisterna tovornjaka?", "30 t", ("30 g", "30 kg", "3 kg", "300 g")),
+    ("Približno koliko tehta banana?", "15 dag", ("15 g", "15 kg", "150 kg", "15 t")),
+    ("Približno koliko tehta kovanec za 1 €?", "7 g", ("7 kg", "70 kg", "7 dag", "7 t")),
+    ("Približno koliko tehta hlebec kruha?", "1 kg", ("1 g", "10 g", "100 kg", "1 t")),
+    ("Približno koliko tehta miš?", "20 g", ("20 kg", "2 kg", "200 kg", "2 t")),
+    # more volumes
+    ("Približno koliko vode je v plastenki za šolsko torbo?", "5 dl", ("5 ml", "5 l", "50 l", "5 hl")),
+    ("Približno koliko soka gre v skodelico?", "2 dl", ("2 ml", "20 l", "2 l", "2 hl")),
+    ("Približno koliko goriva gre v rezervoar avtomobila?", "50 l", ("50 ml", "5 dl", "500 l", "5 ml")),
+    ("Približno koliko juhe je v polni žlici?", "10 ml", ("10 l", "10 dl", "10 hl", "100 l")),
+    ("Približno koliko vode gre v lonec za juho?", "5 l", ("5 ml", "5 dl", "50 hl", "500 l")),
+    ("Približno koliko vode je v sodu?", "2 hl", ("2 ml", "2 dl", "2 l", "20 ml")),
+    ("Približno koliko vode gre v zalivalko?", "10 l", ("10 ml", "10 dl", "10 hl", "100 hl")),
+    ("Približno koliko vode popiješ na dan?", "1 l", ("1 ml", "10 ml", "10 l", "1 hl")),
+    ("Približno koliko vode je v kapljici?", "1 ml", ("1 l", "1 dl", "1 hl", "10 l")),
+    # more times
+    ("Približno koliko časa traja odmor med urami?", "5 min", ("5 s", "5 h", "5 dni", "50 h")),
+    ("Približno koliko časa traja en vdih?", "3 s", ("3 min", "3 h", "3 dni", "30 min")),
+    ("Približno koliko časa traja risanka?", "20 min", ("20 s", "20 h", "20 dni", "2 s")),
+    ("Približno koliko časa traja pouk v šoli?", "5 h", ("5 s", "5 min", "5 dni", "50 h")),
+    ("Približno koliko časa se kuhajo testenine?", "10 min", ("10 s", "10 h", "10 dni", "1 s")),
+    ("Približno koliko časa traja šolsko leto?", "10 mesecev", ("10 dni", "10 h", "10 min", "10 let")),
+    ("Približno koliko časa potrebuješ, da prešteješ do 10?", "5 s", ("5 min", "5 h", "5 dni", "50 min")),
+    ("Približno koliko časa raste drevo, da je visoko kot hiša?", "20 let", ("20 dni", "20 h", "20 min", "20 s")),
+    ("Približno koliko časa traja vožnja z avtom od Ljubljane do Kopra?", "1 h", ("1 s", "1 min", "1 dan", "10 dni")),
+    # money
+    ("Približno koliko stane kruh?", "3 €", ("3 centi", "300 €", "3000 €", "30 000 €")),
+    ("Približno koliko stane kolo?", "300 €", ("3 €", "30 centov", "3 centi", "300 000 €")),
+    ("Približno koliko stane žvečilni gumi?", "50 centov", ("50 €", "500 €", "5000 €", "50 000 €")),
+    ("Približno koliko stane nov avtomobil?", "20 000 €", ("20 €", "200 €", "20 centov", "2 €")),
+    # not estimates, but quick facts from the 4th grade
+    ("Koliko centimetrov ima en meter?", "100", ("10", "1000", "60", "12")),
+    ("Koliko gramov ima en kilogram?", "1000", ("10", "100", "60", "24")),
+    ("Koliko minut ima ena ura?", "60", ("100", "10", "24", "12")),
+    ("Koliko ur ima en dan?", "24", ("12", "60", "100", "10")),
+    ("Koliko decilitrov ima en liter?", "10", ("100", "1000", "60", "12")),
+    ("Koliko metrov ima en kilometer?", "1000", ("100", "10", "60", "10 000")),
+    ("Koliko dni ima navadno leto?", "365", ("360", "100", "300", "52")),
+    ("Koliko kilogramov ima ena tona?", "1000", ("100", "10", "10 000", "60")),
+    ("Koliko je 1/2 ure?", "30 min", ("50 min", "20 min", "15 min", "12 min")),
+    ("Koliko je 1/4 ure?", "15 min", ("25 min", "4 min", "40 min", "30 min")),
+    ("Koliko je pol kilograma?", "500 g", ("50 g", "5 g", "200 g", "1500 g")),
+    ("Koliko je pol litra?", "5 dl", ("50 dl", "2 dl", "500 l", "1 dl")),
+    ("Koliko je 3/4 ure?", "45 min", ("34 min", "30 min", "75 min", "15 min")),
+    ("Koliko je 3/4 kilograma?", "750 g", ("340 g", "75 g", "250 g", "300 g")),
+    ("Koliko je 2/5 od 20?", "8", ("4", "10", "40", "5")),
+    ("Koliko je 3/10 od 50?", "15", ("5", "30", "35", "10")),
+    ("Kateri ulomek je večji?", "3/4", ("1/4", "2/4", "1/2", "3/8")),
+    ("Kateri ulomek je enak 1/2?", "4/8", ("1/4", "2/3", "3/8", "5/8")),
+    ("Kateri ulomek pomeni tri četrtine?", "3/4", ("4/3", "1/3", "3/10", "1/4")),
+    ("Koliko osmin ima cela pica?", "8", ("4", "6", "10", "16")),
+    ("Koliko oglišč ima kocka?", "8", ("6", "12", "4", "10")),
+    ("Koliko ploskev ima kocka?", "6", ("8", "12", "4", "5")),
+    ("Koliko robov ima kocka?", "12", ("6", "8", "4", "10")),
+    ("Katero telo se lahko kotali v vse smeri?", "krogla", ("kocka", "kvader", "piramida", "valj")),
+    ("Kateri lik ima vse štiri stranice enako dolge?", "kvadrat", ("pravokotnik", "trikotnik", "krog", "trapez")),
+    ("Katero število je deljivo z 10?", "740", ("745", "704", "471", "407")),
+    ("Katero število je deljivo s 5?", "385", ("358", "583", "853", "538")),
+    ("Katero število je sodo?", "1 358", ("1 357", "1 573", "1 735", "3 571")),
+    ("Katero število je največje?", "10 001", ("9 999", "10 000", "1 001", "9 909")),
+    ("Katero število je najmanjše?", "1 099", ("1 909", "1 990", "9 011", "1 109")),
+    ("Kateri račun ima rezultat 24?", "48 : 2", ("42 : 2", "36 : 3", "40 : 4", "30 : 2")),
+    ("Kateri račun ima rezultat 7?", "56 : 8", ("54 : 9", "48 : 6", "36 : 6", "45 : 9")),
+    ("Kateri račun ima rezultat 9?", "63 : 7", ("64 : 8", "42 : 7", "56 : 7", "48 : 8")),
+    ("Kateri račun ima rezultat 12?", "60 : 5", ("50 : 5", "40 : 5", "70 : 5", "36 : 4")),
 )
 
 
@@ -2127,7 +2335,7 @@ class Game:
         self.boss_pending = None   # (kind, hp) of the boss this wave still has to bring
         self.webs = {}             # (col, row) -> seconds left; spider webs slow tanks
         self.santa = None          # Santa mode: his Boss while he's in the arena
-        self.santa_player = None   # who flies him this match
+        self.solo_player = None   # who flies him this match
         self.laugh_at = -SANTA_LAUGH_GAP
         self.rider = None
         self.rider_sprite = make_rider_sprite()
@@ -2231,13 +2439,13 @@ class Game:
         for p in self.players:
             p.score = 0
             p.kills = 0
-        if self.mode == 'santa':
-            self.santa_player = self.pick_santa()
+        if self.mode in SOLO_MODES:
+            self.solo_player = self.pick_solo()
         self.new_round()
 
     def make_tank(self, p):
         t = Tank(p, *p.spawn)
-        if self.mode in ('coop', 'santa'):
+        if self.mode in HORDE_MODES:
             t.hp = t.max_hp = COOP_TANK_HP
         return t
 
@@ -2256,16 +2464,19 @@ class Game:
         random.shuffle(sides)
         spawns = corners + sides
         cx, cy = W / 2, HUD + ROWS * T / 2
-        if self.mode == 'santa' and self.santa_player not in self.players:
-            self.santa_player = self.pick_santa()
-        tankers = [p for p in self.players if not (self.mode == 'santa' and p is self.santa_player)]
+        if self.mode in SOLO_MODES and self.solo_player not in self.players:
+            self.solo_player = self.pick_solo()
+        tankers = [p for p in self.players if not (self.mode in SOLO_MODES and p is self.solo_player)]
         for p, (c, r) in zip(tankers, spawns):
             x, y = tile_center(c, r)
             p.spawn = (x, y, math.atan2(cy - y, cx - x))
             p.tank = self.make_tank(p)
-        if self.mode == 'santa':
-            self.santa_player.tank = None
-        if self.mode in ('coop', 'santa'):
+        if self.mode in SOLO_MODES:
+            self.solo_player.tank = None
+        self.cursor = [W / 2, HUD + ROWS * T / 2]   # builder mode
+        self.place_cd = 0.0
+        self.built = {}   # (col, row) -> seconds left for each brick the builder laid
+        if self.mode in HORDE_MODES:
             self.wave = 0
             self.wave_break = 0.5
             self.wave_to_spawn = 0
@@ -2379,13 +2590,15 @@ class Game:
                 self.banner = None
         if self.mode == 'race':
             pass   # update_race handles the finish
-        elif self.state == 'play' and self.mode in ('coop', 'santa'):
+        elif self.state == 'play' and self.mode in HORDE_MODES:
             self.update_crate(dt)
-            if self.mode == 'coop':
-                self.update_waves(dt)
-            else:
+            if self.mode == 'santa':
                 self.update_santa_round(dt)
                 self.update_santa(dt)
+            else:
+                self.update_waves(dt)
+            if self.mode == 'builder':
+                self.update_builder(dt)
             self.update_ghouls(dt)
             if self.mode == 'coop':
                 self.update_bosses(dt)
@@ -2428,7 +2641,7 @@ class Game:
         """Moments where a math question doesn't interrupt the action."""
         if self.state in ('lobby', 'roundover', 'matchover', 'coopover'):
             return True
-        return (self.mode in ('coop', 'santa') and self.state == 'play' and self.wave_break > 0
+        return (self.mode in HORDE_MODES and self.state == 'play' and self.wave_break > 0
                 and not self.ghouls and self.wave_to_spawn == 0 and self.ending is None)
 
     def update_quiz(self, dt):
@@ -2498,15 +2711,15 @@ class Game:
             if 'y' in pad.pressed:
                 self.toggle_mode()
             if 'start' in pad.pressed and self.players and (pl or pad.kind.startswith('kb')):
-                if self.mode == 'santa' and len(self.players) < 2:   # Santa needs someone to hunt him
+                if self.mode in SOLO_MODES and len(self.players) < 2:   # someone has to drive a tank
                     self.sounds.play('empty')
                     continue
                 self.start_match()
                 return
 
     def toggle_mode(self):
-        self.mode = {'versus': 'coop', 'coop': 'race', 'race': 'santa', 'santa': 'versus'}[self.mode]
-        self.sounds.play({'coop': 'groan', 'race': 'go', 'santa': 'laugh'}.get(self.mode, 'join'))
+        self.mode = {'versus': 'coop', 'coop': 'race', 'race': 'santa', 'santa': 'builder', 'builder': 'versus'}[self.mode]
+        self.sounds.play({'coop': 'groan', 'race': 'go', 'santa': 'laugh', 'builder': 'brick'}.get(self.mode, 'join'))
 
     def claim_orphans(self):
         """A reconnected controller (new instance id) takes over a player whose pad vanished."""
@@ -2695,7 +2908,7 @@ class Game:
 
     def targets(self, owner):
         """What specials can hurt: ghouls (and elves, bosses, Santa) in co-op and Santa mode, enemy tanks in versus."""
-        if self.mode in ('coop', 'santa'):
+        if self.mode in HORDE_MODES:
             out = [(g.x, g.y, GHOUL_R, g) for g in self.ghouls if not g.dead and g.emerge <= 0]
             for b in self.bosses:
                 if not b.dead and b.emerge <= 0:
@@ -2895,7 +3108,7 @@ class Game:
                     b.dead = True
                     break
                 b.x, b.y = nx, ny
-                if self.mode in ('coop', 'santa'):
+                if self.mode in HORDE_MODES:
                     for gh in self.ghouls:
                         if not gh.dead and gh.emerge <= 0 and (gh.x - b.x) ** 2 + (gh.y - b.y) ** 2 < (GHOUL_R + BULLET_R) ** 2:
                             self.hit_ghoul(gh, b)
@@ -2977,9 +3190,10 @@ class Game:
         self.shake = max(self.shake, 0.6)
         self.sounds.play('explode')
         self.rumble(t.player, 1.0, 1.0, 600)
-        if self.mode == 'santa' and self.santa_player:   # every tank lost in Santa mode is his doing
-            self.santa_player.kills += 1
-            self.santa_laugh(force=True)
+        if self.mode in SOLO_MODES and self.solo_player:   # every tank lost counts for the player without one
+            self.solo_player.kills += 1
+            if self.mode == 'santa':
+                self.santa_laugh(force=True)
 
     # ---- co-op
 
@@ -3015,12 +3229,16 @@ class Game:
         self.wave_to_spawn = self.wave      # wave N brings N ghouls
         self.spawn_timer = 0.6
         self.banner = [f"VAL {self.wave}", 2.0]
-        if self.wave % BOSS_EVERY == 0:     # ...and every third one a boss as well
+        if self.mode == 'builder':          # more and more zombies, no bosses
+            self.wave_to_spawn = BUILDER_WAVE_START + BUILDER_WAVE_GROWTH * (self.wave - 1)
+        elif self.wave % BOSS_EVERY == 0:   # ...and every third one a boss as well
             k = self.wave // BOSS_EVERY - 1
             self.boss_pending = (BOSS_KINDS[k % len(BOSS_KINDS)], BOSS_HP + BOSS_HP_GROWTH * (k // len(BOSS_KINDS)))
             self.banner = [f"VAL {self.wave}: BOSS", 2.0]
         self.sounds.play('wave')
         for p in self.players:
+            if self.mode in SOLO_MODES and p is self.solo_player:
+                continue
             if not (p.tank and p.tank.alive):
                 p.tank = self.make_tank(p)
                 p.tank.invuln = 2.0
@@ -3473,10 +3691,10 @@ class Game:
 
     # ---- Santa mode
 
-    def pick_santa(self):
+    def pick_solo(self):
         """Players take turns at flying Santa, one match each."""
-        if self.santa_player in self.players:
-            return self.players[(self.players.index(self.santa_player) + 1) % len(self.players)]
+        if self.solo_player in self.players:
+            return self.players[(self.players.index(self.solo_player) + 1) % len(self.players)]
         return random.choice(self.players)
 
     def update_santa_round(self, dt):
@@ -3501,7 +3719,7 @@ class Game:
         self.wave_to_spawn = SANTA_HELPERS * (self.wave - 1)
         self.spawn_timer = 1.0
         for p in self.players:   # destroyed tanks come back, and everyone gets a full load
-            if p is self.santa_player:
+            if p is self.solo_player:
                 continue
             if not (p.tank and p.tank.alive):
                 p.tank = self.make_tank(p)
@@ -3541,7 +3759,7 @@ class Game:
         if b.emerge > 0:
             b.emerge -= dt
             return
-        pad = self.pads.get(self.santa_player.pad_id)
+        pad = self.pads.get(self.solo_player.pad_id)
         if not pad:
             b.throw = None
             return
@@ -3594,6 +3812,109 @@ class Game:
             if t.hp < t.max_hp:
                 t.hp = t.max_hp
                 self.texts.append(["POPRAVLJEN", t.x, t.y - 24, 0.0, (120, 230, 120)])
+
+    # ---- builder mode
+
+    def update_builder(self, dt):
+        """The player without a tank moves a cursor and lays bricks in the tanks' way, but never right next to one."""
+        self.place_cd -= dt
+        for cr in list(self.built):
+            self.built[cr] -= dt
+            if self.built[cr] <= 0:
+                del self.built[cr]
+                self.crumble(*cr)
+        pad = self.pads.get(self.solo_player.pad_id) if self.solo_player else None
+        if not pad:
+            return
+        mx, my = pad.move
+        self.cursor[0] = clamp(self.cursor[0] + mx * BUILDER_SPEED * dt, T / 2, W - T / 2)
+        self.cursor[1] = clamp(self.cursor[1] + my * BUILDER_SPEED * dt, HUD + T / 2, H - T / 2)
+        if pad.held & {'fire', 'fire2', 'a'} and self.place_cd <= 0:
+            c, r = self.cursor_tile()
+            if self.can_build(c, r):
+                self.build(c, r)
+            elif 'fire' in pad.pressed or 'a' in pad.pressed:
+                self.sounds.play('empty')
+
+    def cursor_tile(self):
+        return int(self.cursor[0] // T), int((self.cursor[1] - HUD) // T)
+
+    def can_build(self, c, r):
+        if not (0 < c < COLS - 1 and 0 < r < ROWS - 1) or self.arena.grid[r][c] != EMPTY:
+            return False
+        x, y = tile_center(c, r)
+        if any(math.hypot(x - p.tank.x, y - p.tank.y) < BUILDER_MIN_DIST for p in self.players if p.tank and p.tank.alive):
+            return False
+        things = [(gh.x, gh.y) for gh in self.ghouls] + [(pk[0], pk[1]) for pk in self.pickups]
+        things += [self.crate[:2]] if self.crate else []
+        things += [self.packet[:2]] if self.packet else []
+        return not any(abs(px - x) < T * 0.8 and abs(py - y) < T * 0.8 for px, py in things)
+
+    def build(self, c, r):
+        self.arena.grid[r][c] = BRICK
+        self.arena.brick_hp[(c, r)] = BRICK_HP
+        self.arena.ground = None
+        self.flow = None
+        self.built[(c, r)] = BUILDER_BRICK_LIFE
+        self.place_cd = BUILDER_PLACE_CD
+        x, y = tile_center(c, r)
+        for _ in range(8):
+            a = random.uniform(0, math.tau)
+            self.particles.append([x, y, math.cos(a) * 40, math.sin(a) * 40, 0.6, 0.6, 'smoke', random.uniform(4, 7)])
+        self.sounds.play('brick')
+
+    def crumble(self, c, r):
+        """A builder's brick falls apart when its time is up (unless the tanks got it first)."""
+        if self.arena.grid[r][c] != BRICK:
+            return
+        self.arena.grid[r][c] = EMPTY
+        self.arena.brick_hp.pop((c, r), None)
+        self.arena.ground = None
+        self.flow = None
+        x, y = tile_center(c, r)
+        for _ in range(10):
+            a = random.uniform(0, math.tau)
+            sp = random.uniform(20, 70)
+            self.particles.append([x, y, math.cos(a) * sp, math.sin(a) * sp, 0.6, 0.6, 'debris', random.uniform(3, 5),
+                                   (150, 70, 45)])
+        for _ in range(6):
+            self.particles.append([x + random.uniform(-12, 12), y + random.uniform(-12, 12), 0, -20, 0.8, 0.8, 'smoke',
+                                   random.uniform(4, 7)])
+
+    def draw_builder_cursor(self, w):
+        for (c, r), life in self.built.items():   # how long each of the builder's bricks still stands
+            if self.arena.grid[r][c] == BRICK:
+                k = life / BUILDER_BRICK_LIFE
+                w.fill((30, 20, 15), (c * T + 4, HUD + r * T + T - 7, T - 8, 4))
+                w.fill(lerp_color((230, 60, 40), (240, 200, 90), k), (c * T + 4, HUD + r * T + T - 7, int((T - 8) * k), 4))
+        c, r = self.cursor_tile()
+        ok = self.can_build(c, r)
+        col = self.solo_player.color if ok else (230, 50, 45)
+        if self.place_cd > 0:   # still on cooldown: grey, with the wait shown as a shrinking arc
+            col = (120, 120, 128) if ok else col
+        rect = pygame.Rect(c * T, HUD + r * T, T, T)
+        pygame.draw.rect(w, col, rect, 3, border_radius=4)
+        if not ok:
+            pygame.draw.line(w, col, rect.topleft, rect.bottomright, 3)
+            pygame.draw.line(w, col, rect.topright, rect.bottomleft, 3)
+        for p in self.players:   # the no-build zones, shown when the cursor comes close
+            t = p.tank
+            if t and t.alive and math.hypot(t.x - self.cursor[0], t.y - self.cursor[1]) < BUILDER_MIN_DIST + 2 * T:
+                pygame.draw.circle(w, (230, 50, 45), (t.x, t.y), BUILDER_MIN_DIST, 2)
+        x, y = self.cursor
+        pygame.draw.circle(w, (255, 255, 255), (x, y), 5, 2)
+        if self.place_cd > 0:
+            k = self.place_cd / BUILDER_PLACE_CD
+            pygame.draw.arc(w, (255, 255, 255), (x - 13, y - 13, 26, 26), math.pi / 2, math.pi / 2 + math.tau * k, 3)
+
+    def draw_builder_hud(self, p, x0):
+        self.screen.blit(pygame.transform.smoothscale(self.arena.brick_tiles[0], (24, 24)), (x0 + 2, HUD // 2 - 12))
+        self.screen.blit(self.render(self.font_hud, f"P{p.idx + 1}", p.color), (x0 + 30, 11))
+        self.screen.blit(self.render(self.font_tiny, "NAGAJIVEC", (230, 150, 90)), (x0 + 62, 3))
+        k = 1 - max(0.0, self.place_cd) / BUILDER_PLACE_CD   # cooldown bar: full means the next brick is ready
+        self.screen.fill((60, 60, 65), (x0 + 62, 21, 70, 10))
+        self.screen.fill((200, 95, 60) if k >= 1 else (130, 110, 100), (x0 + 62, 21, int(70 * k), 10))
+        self.screen.blit(self.render(self.font_hud, f"x{p.kills}", (230, 230, 230)), (x0 + 140, 11))
 
     # ---- race
 
@@ -4164,7 +4485,7 @@ class Game:
         else:   # an arrow in the player's colour shows where he's aiming
             ca, sa = math.cos(b.angle), math.sin(b.angle)
             x, y = b.x + ca * 36, b.y + sa * 36
-            pygame.draw.polygon(w, self.santa_player.color, [(x + ca * 9, y + sa * 9), (x - sa * 6, y + ca * 6), (x + sa * 6, y - ca * 6)])
+            pygame.draw.polygon(w, self.solo_player.color, [(x + ca * 9, y + sa * 9), (x - sa * 6, y + ca * 6), (x + sa * 6, y - ca * 6)])
 
     def draw_boss_shots(self, w):
         for s in self.boss_shots:
@@ -4423,6 +4744,8 @@ class Game:
                 self.draw_boss(w, b)
         if self.boss_shots:
             self.draw_boss_shots(w)
+        if self.mode == 'builder' and self.state == 'play' and self.solo_player:
+            self.draw_builder_cursor(w)
         for x, y, t, mt in self.rings:
             k = t / mt
             pygame.draw.circle(w, lerp_color((255, 220, 150), (255, 90, 30), k), (x, y), 10 + 90 * k, max(1, int(7 * (1 - k))))
@@ -4437,8 +4760,10 @@ class Game:
         slot = W // MAX_PLAYERS
         for p in self.players:
             x0 = p.idx * slot + 8
-            if self.mode == 'santa' and p is self.santa_player:
+            if self.mode == 'santa' and p is self.solo_player:
                 self.draw_santa_hud(p, x0)
+            elif self.mode == 'builder' and p is self.solo_player:
+                self.draw_builder_hud(p, x0)
             else:
                 icon = pygame.transform.rotozoom(p.sprites['body'], 0, 0.7)
                 self.screen.blit(icon, icon.get_rect(center=(x0 + 14, HUD // 2)))
@@ -4462,7 +4787,7 @@ class Game:
                 for i in range(MAX_AMMO):
                     col = (230, 185, 70) if i < ammo else ((150, 50, 45) if empty_flash else (60, 60, 65))
                     self.screen.fill(col, (x0 + 62 + i * 6, 21, 4, 12))
-                if self.mode in ('coop', 'santa'):
+                if self.mode in HORDE_MODES:
                     self.screen.blit(self.render(self.font_hud, f"x{p.kills}", (230, 230, 230)), (x0 + 140, 11))
                 if self.mode == 'race':
                     self.screen.blit(self.render(self.font_tiny, f"x{p.kills}", (230, 60, 55)), (x0 + 184, 13))
@@ -4495,7 +4820,7 @@ class Game:
 
     def draw_overlay(self):
         cy = HUD + ROWS * T // 2
-        if self.mode in ('coop', 'santa') and self.state in ('countdown', 'play'):
+        if self.mode in HORDE_MODES and self.state in ('countdown', 'play'):
             if self.mode == 'santa':
                 if self.wave:
                     elves = len(self.ghouls) + self.wave_to_spawn
@@ -4519,6 +4844,9 @@ class Game:
         if self.state == 'coopover':
             self.dim(170)
             self.text("TANKI SO PADLI", self.font_med, (255, 110, 90), (W // 2, cy - 80))
+            if self.mode == 'builder' and self.solo_player:
+                p = self.solo_player
+                self.text(f"{p.cname} NAGAJIVEC ZMAGA!", self.font_med, p.color, (W // 2, cy - 140))
             total = sum(p.kills for p in self.players)
             self.text(f"Dosežen val {self.wave}   •   uničenih pošasti: {total}",
                       self.font_small, (230, 230, 230), (W // 2, cy - 20))
@@ -4534,9 +4862,10 @@ class Game:
         if self.state == 'countdown':
             n = max(1, math.ceil(self.timer))
             self.text(str(n), self.font_big, (255, 255, 255), (W // 2, cy))
-            if self.mode == 'santa' and self.santa_player:
-                p = self.santa_player
-                self.text(f"{p.cname} (P{p.idx + 1}) JE BOŽIČEK", self.font_med, p.color, (W // 2, cy + 90))
+            if self.mode in SOLO_MODES and self.solo_player:
+                p = self.solo_player
+                role = "BOŽIČEK" if self.mode == 'santa' else "NAGAJIVEC"
+                self.text(f"{p.cname} (P{p.idx + 1}) JE {role}", self.font_med, p.color, (W // 2, cy + 90))
         elif self.state == 'play' and self.go_timer > 0:
             self.text("GREMO!", self.font_big, (255, 230, 120), (W // 2, cy))
         elif self.state == 'roundover':
@@ -4705,15 +5034,18 @@ class Game:
             self.text("NAČIN:  SODELOVANJE  -  skupaj preživite nemrtve", self.font_small, (255, 120, 90), (W // 2, 522))
         elif self.mode == 'race':
             self.text("NAČIN:  DIRKA  -  skoki, drsenje in granate, ki le odbijajo", self.font_small, (120, 210, 255), (W // 2, 522))
-        else:
+        elif self.mode == 'santa':
             self.text("NAČIN:  BOŽIČEK  -  en igralec je Božiček, ostali ga lovijo s tanki", self.font_small, (140, 230, 150), (W // 2, 522))
+        else:
+            self.text("NAČIN:  NAGAJIVEC  -  en igralec postavlja zidove, ostali se branijo zombijev",
+                      self.font_small, (230, 150, 90), (W // 2, 522))
         self.text("Y / TAB zamenja način", self.font_tiny, (170, 170, 175), (W // 2, 548), shadow=False)
         self.text(f"Povezani kontrolerji: {n_pads}", self.font_tiny, (150, 150, 155), (W // 2, 568), shadow=False)
         if joined:
             if len(joined) > 1 or self.mode in ('coop', 'race'):
                 msg = "Pritisni START za začetek"
-            elif self.mode == 'santa':
-                msg = "Za Božička sta potrebna vsaj 2 igralca"
+            elif self.mode in SOLO_MODES:
+                msg = "Za ta način sta potrebna vsaj 2 igralca"
             else:
                 msg = "Pritisni START za vadbo (za tekmo sta potrebna vsaj 2 igralca)"
             self.text(msg, self.font_small, (255, 255, 255), (W // 2, 590))
@@ -4721,7 +5053,8 @@ class Game:
                   self.font_tiny, (150, 150, 155), (W // 2, 630), shadow=False)
         goal = {'versus': f"Zmaga, kdor prvi dobi {WIN_SCORE} rund", 'coop': "Val N prinese N pošasti",
                 'race': f"{RACE_LAPS} krogov, zmaga, kdor prvi dobi {RACE_WIN_SCORE} dirke",
-                'santa': f"Premagan Božiček se vrne s {SANTA_HELPERS} škrati več"}[self.mode]
+                'santa': f"Premagan Božiček se vrne s {SANTA_HELPERS} škrati več",
+                'builder': f"Vsak val ima {BUILDER_WAVE_GROWTH} zombija več, zidovi ne smejo blizu tankov"}[self.mode]
         quit_hint = "" if WEB else "   •   ESC izhod"
         self.text(f"{goal}   •   B izstop   •   F11 celozaslonsko{quit_hint}",
                   self.font_hud, (150, 150, 155), (W // 2, 660), shadow=False)
@@ -4747,7 +5080,7 @@ class Game:
         tx = 960
         font = pygame.font.Font(None, 52)
         if kind == 'santa':
-            p = self.santa_player
+            p = self.solo_player
             self.text(f"{p.cname} BOŽIČEK ZMAGA!", self.font_med, p.color, (tx, 130), bg)
             self.text("HO-HO-HO!", self.font_med, (255, 215, 90), (tx, 205), bg)
         else:
@@ -4763,8 +5096,8 @@ class Game:
             n = self.wave - 1
             self.text(f"Božička ste premagali {n}-krat" if n else "Božička niste premagali niti enkrat",
                       self.font_hud, (210, 210, 210), (tx, 490), bg)
-            elves = sum(q.kills for q in self.players if q is not self.santa_player)
-            self.text(f"Uničeni škratje: {elves}   •   uničeni tanki: {self.santa_player.kills}",
+            elves = sum(q.kills for q in self.players if q is not self.solo_player)
+            self.text(f"Uničeni škratje: {elves}   •   uničeni tanki: {self.solo_player.kills}",
                       self.font_hud, (210, 210, 210), (tx, 524), bg)
         else:
             total = sum(p.kills for p in self.players)
@@ -4832,7 +5165,7 @@ class Game:
     def self_check(self):
         """Play a few seconds of every mode with idle keyboard players, then return."""
         self.players = [Player(0, 'kb1'), Player(1, 'kb2')]
-        for mode in ('versus', 'coop', 'race', 'santa'):
+        for mode in ('versus', 'coop', 'race', 'santa', 'builder'):
             self.mode = mode
             self.start_match()
             for _ in range(240):
