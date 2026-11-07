@@ -97,7 +97,7 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 - `mode == 'builder'` (NAGAJIVEC on screen) is co-op waves (`update_waves`/`start_wave`) with a tankless `solo_player`
   (picked with `pick_solo`, like Santa). The user asked for these rules: waves keep growing
   (`BUILDER_WAVE_START` + `BUILDER_WAVE_GROWTH` per wave, no bosses), and the solo player lays brick walls but
-  never within `BUILDER_MIN_DIST` of a tank. Bricks come one per `BUILDER_PLACE_CD` (3 s) and crumble after
+  never within `BUILDER_MIN_DIST` of a tank. Bricks come one per `BUILDER_PLACE_CD` (2 s) and crumble after
   `BUILDER_BRICK_LIFE` (30 s).
 - `update_builder` moves `self.cursor` from the pad, and holding fire calls `build` when `can_build` allows it (an empty
   interior tile with no tank within `BUILDER_MIN_DIST` and no ghoul, crate, packet or pickup on it) and

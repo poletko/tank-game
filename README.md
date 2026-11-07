@@ -91,7 +91,7 @@ The fourth mode in the lobby, for 2 or more players. One player flies **Santa** 
 The fifth mode in the lobby (NAGAJIVEC, "the troublemaker"), for 2 or more players. Everyone but one player drives a tank and holds off waves of zombies, mummies, vampires and ghosts. The waves keep growing: 3 monsters in the first wave, then 2 more in each wave after it, and no bosses. The player without a tank is the troublemaker and builds brick walls to get in the tanks' way. Players take turns at it, one match each.
 - Move the cursor with the left stick (keyboard: as for driving) and press or hold fire (or A) to lay a brick.
 - Walls can't go within 3 tiles of a tank. When the cursor comes close, a red circle shows a tank's no-build zone, and the cursor turns red with a cross wherever a brick can't go. Bricks can't go on monsters, crates or pickups either.
-- After each brick there's a 3 second wait before the next one. The bar in the troublemaker's HUD slot and the ring around the cursor show it.
+- After each brick there's a 2 second wait before the next one. The bar in the troublemaker's HUD slot and the ring around the cursor show it.
 - The troublemaker's bricks crumble after 30 seconds. A small bar on each one shows how long it has left.
 - Tanks can shoot through the bricks (2 hits each), and the monsters claw through them.
 - Tanks have 5 health and no friendly fire. Every cleared wave repairs them, and destroyed tanks come back for the next wave.
