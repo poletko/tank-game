@@ -145,17 +145,18 @@ Always run the smoke test after changes. For visual changes, also look at the sc
 
 ## Math break
 - `quiz_clock` counts seconds in `countdown`/`play`. Once it passes `QUIZ_INTERVAL` (180 s), `update()` opens a
-  `Quiz` at the next `at_break()`: lobby, roundover, matchover, coopover, or an empty co-op wave break. While
-  `self.quiz` is set, `update()` only runs `update_quiz`, so the game is frozen. The clock resets when a question
-  is answered correctly. The user asked for this: keep it mandatory and never open it mid-action.
-- `make_question()` returns `(text, answer, unit)` in Slovenian at the level of a finished 4th grade, weighted towards division and unit conversion, with fractions mostly using numerators above 1 (the user asked for this); answers must
-  fit `QUIZ_DIGITS`. The smoke test checks 5000 random questions. Entry uses the pad's edge-triggered
-  `up/down/left/right` buttons (derived from the stick and D-pad in `Pad.poll`), and keyboard digits come in as
-  KEYDOWN events in `run()`.
-- A break asks `QUIZ_QUESTIONS` (3) questions, at least one a multiple choice estimate (the user asked for this,
-  with at least 4 options): `make_estimate()` picks from `ESTIMATES` (question, right answer, wrong answers; besides estimates it also holds quick facts, fractions and divisions).
-  `Quiz.options` is set for those; then `answer`/`choice` are option indices, picked on a 2x2 grid or with keys 1-4,
-  with `QUIZ_CHOICE_TRIES` tries. `q.done` counts solved questions; the clock resets after the last one.
+  `Quiz` at the next `at_break()`: lobby, roundover, matchover, coopover, or an empty co-op wave break (only with
+  players). While `self.quiz` is set, `update()` only runs `update_quiz`, so the game is frozen. The user asked for
+  this: keep it mandatory and never open it mid-action.
+- The user asked for this: 2nd grade level, adding and subtracting within `QUIZ_MAX` (30) plus word problems of the
+  same difficulty, and **every player gets their own question**. `Quiz.slots` holds one `QuizSlot` per player (own
+  question, digits, cursor, tries, `msg`), driven only by that player's pad; `QUIZ_QUESTIONS` (3) each. The break
+  ends when every slot is finished; `quiz_slots()` skips players whose pad is gone. Keyboard digits (KEYDOWN in
+  `run()`) go to `quiz_keyboard_slot()`, the first unfinished kb player.
+- `make_question()` returns `(text, answer, unit)`; word problems (`make_word_problem`) use `count()` for the
+  Slovenian dual/plural (1 bonbon, 2 bonbona, 3 bonbone, 5 bonbonov) with `QUIZ_NOUNS` in the accusative, and
+  present tense so verbs don't depend on gender. The smoke test checks 5000 questions: all numbers within 30 and
+  the text fits the narrowest card. Cards are laid out by `quiz_cards()` (up to 3 x 2).
 
 ## Browser version (pygbag)
 - pygbag runs CPython and pygame-ce compiled to WebAssembly. `WEB` (`sys.platform == 'emscripten'`) gates the few

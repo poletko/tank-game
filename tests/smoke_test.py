@@ -5,6 +5,7 @@ Usage: python3 tests/smoke_test.py [--shots DIR]
 """
 import os
 import random
+import re
 import sys
 import time
 
@@ -736,18 +737,17 @@ g.fire(a)
 assert a.ammo == ammo, "race shells are unlimited"
 print("ghost rider ok")
 
-# ---- math break: valid questions, appears only at a break, answerable with a pad
+# ---- math break: valid 2nd grade questions, one per player, appears only at a break, answerable with a pad
+g.quiz = tanks.Quiz(g.players)
+cards = g.quiz_cards()
+assert len(cards) == len(g.players) and all(g.screen.get_rect().contains(c) for c in cards)
+narrow = min(cards, key=lambda c: c.w)
 for _ in range(5000):
     text, ans, unit = tanks.make_question()
-    assert isinstance(ans, int) and 0 <= ans < 10 ** tanks.QUIZ_DIGITS, (text, ans)
-    assert len(g.wrap(text, g.font_med, 900)) <= 3, text
-for text, right, wrong in tanks.ESTIMATES:
-    assert len(wrong) >= 3 and right not in wrong and len(set(wrong)) == len(wrong), text
-    assert len(g.wrap(text, g.font_med, 900)) <= 2, text
-    assert g.font_med.size("d)  " + max(wrong + (right,), key=len))[0] < 380, text
-for _ in range(200):
-    text, options, ans = tanks.make_estimate()
-    assert len(options) == 4 and len(set(options)) == 4 and 0 <= ans < 4
+    assert isinstance(ans, int) and 0 <= ans <= tanks.QUIZ_MAX < 10 ** tanks.QUIZ_DIGITS, (text, ans)
+    assert all(0 <= int(n) <= tanks.QUIZ_MAX for n in re.findall(r"\d+", text)), text
+    assert len(g.wrap(text, g.quiz_font(narrow, text), narrow.w - 30)) <= 4, text
+g.quiz = None
 g.state, g.ending = "play", None
 g.quiz_clock = tanks.QUIZ_INTERVAL + 1
 g.update(1 / 60)
@@ -755,54 +755,64 @@ assert g.quiz is None, "the math break must not interrupt a race in progress"
 g.state = "roundover"
 g.update(1 / 60)
 assert g.quiz is not None
-q = g.quiz
-pad = g.pads[fake[0]]
+quiz = g.quiz
+assert [sl.player for sl in quiz.slots] == g.players, "every player gets a question"
+assert len({id(sl) for sl in quiz.slots}) == len(g.players)
 
 
-def press(*names):
-    pad.pressed = set(names)
+def press(pid, *names):
+    g.pads[pid].pressed = set(names)
     g.update(1 / 60)
-    pad.pressed = set()
+    g.pads[pid].pressed = set()
+
+
+def settle():
+    for _ in range(100):
+        g.update(1 / 60)
 
 
 timer = g.timer
-q.kinds = ["num", "choice", "num"]   # fixed, so both kinds get tested
-q.new_question()
-press("a")   # 00000 is never the answer to these questions... unless it is
-if q.answer != 0:
-    assert g.quiz and q.tries == 1 and g.timer == timer, "a wrong answer keeps the game frozen"
-for i, d in enumerate(f"{q.answer:0{tanks.QUIZ_DIGITS}d}"):   # dial the answer in with the stick
-    while q.cursor > i:
-        press("left")
-    while q.cursor < i:
-        press("right")
-    while q.digits[i] != int(d):
-        press("up")
-press("a")
-assert q.solved > 0
-for _ in range(120):
-    g.update(1 / 60)
-assert g.quiz is q and q.done == 1 and q.options, "the second question is multiple choice"
-wrong = (q.answer + 1) % 4
-while q.choice != wrong:
-    press("right" if (q.choice ^ wrong) & 1 else "down")
-press("a")
-assert q.options and q.tries == 1 and wrong in q.wrong
-q.type_digit(q.answer + 1)   # keyboard 1-4
-assert q.choice == q.answer
-press("a")
-assert q.solved > 0
+first, second = quiz.slots[0], quiz.slots[1]
+if first.answer != 0:
+    press(first.player.pad_id, "a")
+    assert g.quiz and first.tries == 1 and second.tries == 0 and g.timer == timer, "a wrong answer is per player"
+for i, d in enumerate(f"{first.answer:0{tanks.QUIZ_DIGITS}d}"):   # dial the answer in with the stick
+    while first.cursor > i:
+        press(first.player.pad_id, "left")
+    while first.cursor < i:
+        press(first.player.pad_id, "right")
+    while first.digits[i] != int(d):
+        press(first.player.pad_id, "up")
+assert second.value() == 0, "one player's stick doesn't move another's digits"
+press(first.player.pad_id, "a")
+assert first.solved > 0
+settle()
+assert first.done == 1 and second.done == 0
 g.draw()
 if shots:
     pygame.image.save(g.screen, os.path.join(shots, "quiz.png"))
-for _ in range(120):
-    g.update(1 / 60)
-assert q.done == 2 and not q.options
-q.digits = [int(c) for c in f"{q.answer:0{tanks.QUIZ_DIGITS}d}"]
-press("a")
-for _ in range(120):
-    g.update(1 / 60)
+# everyone else answers; the game stays frozen until the last player is done
+for _ in range(tanks.QUIZ_QUESTIONS):
+    for sl in quiz.slots:
+        if sl.finished():
+            continue
+        sl.digits = [int(c) for c in f"{sl.answer:0{tanks.QUIZ_DIGITS}d}"]
+        press(sl.player.pad_id, "a")
+    settle()
+    assert g.quiz is None or g.quiz_clock > 0
 assert g.quiz is None and g.quiz_clock == 0, "solving all questions resets the clock"
+# a player without a pad doesn't block the break
+g.quiz = tanks.Quiz(g.players)
+gone = g.pads.pop(fake[0])
+for sl in g.quiz.slots[1:]:
+    sl.done = tanks.QUIZ_QUESTIONS
+g.update(1 / 60)
+assert g.quiz is None
+g.pads[fake[0]] = gone
+for n in (1, 2, 3, 4, 5):   # the card layout for fewer players
+    g.quiz = tanks.Quiz(g.players[:n])
+    g.draw()
+g.quiz = None
 
 # ---- browser drawing path: bushes baked into the ground still hide what's under them, decals included
 g.to_lobby()

@@ -198,9 +198,8 @@ ORDINALS = ('1.', '2.', '3.', '4.', '5.', '6.')
 
 # math break
 QUIZ_INTERVAL = 180.0       # seconds of play between questions
-QUIZ_DIGITS = 5
+QUIZ_DIGITS = 2
 QUIZ_TRIES = 3              # wrong answers before the solution is shown and a new question asked
-QUIZ_CHOICE_TRIES = 2       # the same for multiple choice, where guessing is easier
 QUIZ_QUESTIONS = 3          # questions per break
 MAX_PLAYERS = 6
 
@@ -297,411 +296,124 @@ def fmt(n):
     return f"{n:,}".replace(",", " ")
 
 
+# things to count, in the accusative: (1, 2, 3-4, 5+); the 5+ form is also the genitive plural ("koliko bonbonov")
+QUIZ_NOUNS = (
+    ('bonbon', 'bonbona', 'bonbone', 'bonbonov'),
+    ('frnikolo', 'frnikoli', 'frnikole', 'frnikol'),
+    ('jabolko', 'jabolki', 'jabolka', 'jabolk'),
+    ('nalepko', 'nalepki', 'nalepke', 'nalepk'),
+    ('kamenček', 'kamenčka', 'kamenčke', 'kamenčkov'),
+    ('sličico', 'sličici', 'sličice', 'sličic'),
+    ('piškot', 'piškota', 'piškote', 'piškotov'),
+    ('balon', 'balona', 'balone', 'balonov'),
+    ('barvico', 'barvici', 'barvice', 'barvic'),
+    ('lešnik', 'lešnika', 'lešnike', 'lešnikov'),
+    ('školjko', 'školjki', 'školjke', 'školjk'),
+    ('kostanj', 'kostanja', 'kostanje', 'kostanjev'),
+)
+QUIZ_NAMES = (('Ana', 'f'), ('Maja', 'f'), ('Eva', 'f'), ('Lara', 'f'), ('Zala', 'f'), ('Nika', 'f'),
+              ('Luka', 'm'), ('Jan', 'm'), ('Tim', 'm'), ('Nik', 'm'), ('Žiga', 'm'), ('Mark', 'm'))
+QUIZ_MAX = 30
+
+
+def count(n, forms):
+    """'n things' with the Slovenian dual and plural: 1 bonbon, 2 bonbona, 3 bonbone, 5 bonbonov."""
+    k = n % 100
+    return f"{n} {forms[0] if k == 1 else forms[1] if k == 2 else forms[2] if k in (3, 4) else forms[3]}"
+
+
 def make_question():
-    """A math question at the level of a finished 4th grade in Slovenia: (text, answer, unit)."""
+    """A 2nd grade question, adding or subtracting within 30: (text, answer, unit)."""
     r = random.randint
-    # mostly division and unit conversion, the rest keeps the other topics fresh
-    kind = random.choice(('div', 'div', 'div', 'div', 'divword', 'divword', 'divword', 'rem', 'units', 'units',
-                          'units', 'units', 'units', 'unitword', 'add', 'sub', 'table', 'mul', 'fraction',
-                          'perimeter', 'order', 'round', 'missing', 'word', 'word', 'seq', 'place'))
+    kind = random.choice(('add', 'add', 'sub', 'sub', 'missing', 'three', 'word', 'word', 'word', 'word'))
     if kind == 'add':
-        a = r(1000, 8999)
-        b = r(100, 9999 - a)
-        return f"{fmt(a)} + {fmt(b)} = ?", a + b, ""
+        a = r(2, QUIZ_MAX - 2)
+        b = r(1, QUIZ_MAX - a)
+        return f"{a} + {b} = ?", a + b, ""
     if kind == 'sub':
-        a = r(1000, 10000)
-        b = r(100, a - 1)
-        return f"{fmt(a)} - {fmt(b)} = ?", a - b, ""
-    if kind == 'table':
-        a, b = r(2, 10), r(2, 10)
-        return random.choice(((f"{a} · {b} = ?", a * b), (f"{a * b} : {b} = ?", a)))[0:2] + ("",)
-    if kind == 'mul':
-        b = r(2, 9)
-        a = r(101, 9999 // b)
-        return f"{fmt(a)} · {b} = ?", a * b, ""
-    if kind == 'div':
-        b = r(2, 9)
-        q = random.choice((r(21, 9999 // b), r(11, 99), r(101, 999)))
-        k = random.choice((1, 1, 10, 100))
-        if q * b * k > 99999:
-            k = 1
-        return random.choice(((f"{fmt(q * b * k)} : {b} = ?", q * k),
-                              (f"{fmt(q * b)} : □ = {fmt(q)}", b),
-                              (f"{fmt(b * k * 10)} : {k * 10} = ?", b)))[0:2] + ("",)
-    if kind == 'divword':
-        b, q = r(2, 9), r(3, 25)
-        return random.choice((
-            (f"{q * b} bonbonov razdelimo med {b} otrok. Koliko bonbonov dobi vsak?", q, ""),
-            (f"{q * b} jajc zložimo v škatle po {b}. Koliko škatel napolnimo?", q, ""),
-            (f"Vrv dolgo {q * b} m razrežemo na {b} enakih kosov. Kako dolg je en kos?", q, "m"),
-            (f"{b} enakih zvezkov stane {q * b} €. Koliko stane en zvezek?", q, "€"),
-            (f"Kolesar v {b} urah prevozi {q * b} km. Koliko km prevozi v eni uri?", q, "km"),
-            (f"Kolikokrat gre {b} v {q * b}?", q, ""),
-            (f"Koliko je polovica od {2 * q * b}?", q * b, ""),
-            (f"Koliko je četrtina od {4 * q * b}?", q * b, ""),
-            (f"{q * b} učencev se razporedi v {b} enako velikih ekip. Koliko učencev je v eni ekipi?", q, ""),
-            (f"{q * b} jabolk zložimo v vrečke po {b}. Koliko vrečk potrebujemo?", q, ""),
-            (f"Avto ima 4 kolesa. Na parkirišču naštejemo {4 * q} koles. Koliko je avtomobilov?", q, ""),
-            (f"Pajek ima 8 nog. Skupaj naštejemo {8 * q} nog. Koliko je pajkov?", q, ""),
-            (f"{max(b, 5)} prijateljev si enako razdeli {q * max(b, 5) * 10} €. Koliko evrov dobi vsak?", q * 10, "€"),
-            (f"Teden ima 7 dni. Koliko tednov je {7 * q} dni?", q, ""),
-            (f"Tovornjak v {b} vožnjah odpelje {q * b * 100} kg peska. Koliko kg odpelje v eni vožnji?",
-             q * 100, "kg"),
-            (f"Ogrlica ima {q * b} kroglic v {b} barvah, vsake barve enako. Koliko kroglic je ene barve?", q, ""),
-            (f"Koliko je tretjina od {3 * q * b}?", q * b, ""),
-            (f"Koliko je desetina od {10 * q * b}?", q * b, ""),
-            (f"Katero število je {b}-krat manjše od {q * b}?", q, ""),
-            (f"Trak dolg {q * b * 10} cm razrežemo na kose po {b * 10} cm. Koliko kosov dobimo?", q, ""),
-            (f"Kino ima {q * b} sedežev v {b} enakih vrstah. Koliko sedežev je v eni vrsti?", q, ""),
-        ))
-    if kind == 'rem':
-        b = r(2, 9)
-        q, m = r(3, 30), r(1, b - 1)
-        n = q * b + m
-        return random.choice((
-            (f"Kolikšen je ostanek pri deljenju {n} : {b}?", m, ""),
-            (f"{n} : {b} = ? (ostanek {m})", q, ""),
-            (f"{n} bonbonov razdelimo med {b} otrok, vsak dobi enako. Koliko bonbonov ostane?", m, ""),
-            (f"{n} učencev se vozi v čolnih po {b}. Koliko čolnov je polnih?", q, ""),
-            (f"{n} učencev se vozi v čolnih po {b}. Koliko čolnov potrebujejo za vse?", q + 1, ""),
-        ))
-    if kind == 'fraction':
-        d = r(2, 10)
-        p = r(2, d - 1) if d > 2 and random.random() < 0.75 else 1   # numerator, mostly more than 1
-        part = r(2, 12)
-        n = d * part
-        hd = random.choice((3, 4, 5, 6, 10, 12))
-        hp = r(2, hd - 1)
-        gd = random.choice((4, 5, 10))
-        gp = r(2, gd - 1)
-        return random.choice((
-            (f"Koliko je {p}/{d} od {n}?", p * part, ""),
-            (f"Koliko je {p}/{d} od {n * 10}?", p * part * 10, ""),
-            (f"Torta ima {n} koščkov. Pojedli smo {p}/{d} torte. Koliko koščkov smo pojedli?", p * part, ""),
-            (f"Razred ima {n} učencev. {p}/{d} jih je deklic. Koliko je deklic?", p * part, ""),
-            (f"Pot je dolga {n * 100} m. Prehodili smo {p}/{d} poti. Koliko metrov smo prehodili?",
-             p * part * 100, "m"),
-            (f"Koliko minut je {hp}/{hd} ure?", hp * 60 // hd, "min"),
-            (f"{p}/{d} števila je {p * part}. Katero je to število?", n, ""),
-            (f"Koliko gramov je {gp}/{gd} kg?", gp * 1000 // gd, "g"),
-        ))
-    if kind == 'units':
-        a, b = r(2, 9), r(11, 99)
-        return random.choice((
-            (f"{a} m {b} cm = ? cm", a * 100 + b, "cm"),
-            (f"{a * 100} cm = ? m", a, "m"),
-            (f"{a} m = ? dm", a * 10, "dm"),
-            (f"{a * 10} mm = ? cm", a, "cm"),
-            (f"{a * 1000} m = ? km", a, "km"),
-            (f"{a} km {b * 10} m = ? m", a * 1000 + b * 10, "m"),
-            (f"{a} m = ? mm", a * 1000, "mm"),
-            (f"{a} kg = ? g", a * 1000, "g"),
-            (f"{a * 1000} g = ? kg", a, "kg"),
-            (f"{a} kg {b * 10} g = ? g", a * 1000 + b * 10, "g"),
-            (f"{a} dag = ? g", a * 10, "g"),
-            (f"{a * 100} dag = ? kg", a, "kg"),
-            (f"{a} t = ? kg", a * 1000, "kg"),
-            (f"{a} l {b % 10} dl = ? dl", a * 10 + b % 10, "dl"),
-            (f"{a * 10} dl = ? l", a, "l"),
-            (f"{a} l = ? ml", a * 1000, "ml"),
-            (f"{a} hl = ? l", a * 100, "l"),
-            (f"{a % 4 + 1} h {b % 60} min = ? min", (a % 4 + 1) * 60 + b % 60, "min"),
-            (f"{a * 60} min = ? h", a, "h"),
-            (f"{a} min = ? s", a * 60, "s"),
-            (f"{a * 60} s = ? min", a, "min"),
-            (f"{a} dni = ? h", a * 24, "h"),
-            (f"{a * 24} h = ? dni", a, "dni"),
-            (f"{a} € {b} centov = ? centov", a * 100 + b, "centov"),
-            (f"{a * 100} centov = ? €", a, "€"),
-            (f"{a} dm = ? cm", a * 10, "cm"),
-            (f"{a * 10} cm = ? dm", a, "dm"),
-            (f"{a} cm = ? mm", a * 10, "mm"),
-            (f"{a} km = ? m", a * 1000, "m"),
-            (f"{a} m {b % 10} dm = ? dm", a * 10 + b % 10, "dm"),
-            (f"{a} dm {b % 10} cm = ? cm", a * 10 + b % 10, "cm"),
-            (f"{a} cm {b % 10} mm = ? mm", a * 10 + b % 10, "mm"),
-            (f"{a * 100} mm = ? dm", a, "dm"),
-            (f"{a} kg = ? dag", a * 100, "dag"),
-            (f"{a * 10} g = ? dag", a, "dag"),
-            (f"{a * 1000} kg = ? t", a, "t"),
-            (f"{a} t {b * 10} kg = ? kg", a * 1000 + b * 10, "kg"),
-            (f"{a} l = ? dl", a * 10, "dl"),
-            (f"{a} dl = ? ml", a * 100, "ml"),
-            (f"{a * 1000} ml = ? l", a, "l"),
-            (f"{a * 100} l = ? hl", a, "hl"),
-            (f"{a} h = ? min", a * 60, "min"),
-            (f"{a % 5 + 1} min {b % 60} s = ? s", (a % 5 + 1) * 60 + b % 60, "s"),
-            (f"{a + 4} tednov = ? dni", (a + 4) * 7, "dni"),
-            (f"{a * 7} dni = ? tednov", a, "tednov"),
-            (f"{a + 4} let = ? mesecev", (a + 4) * 12, "mesecev"),
-            (f"{a * 12} mesecev = ? let", a, "let"),
-            (f"{a} € = ? centov", a * 100, "centov"),
-        ))
-    if kind == 'unitword':
-        a, b = r(2, 9), r(2, 9)
-        return random.choice((
-            (f"Pot do šole je dolga {a} km {b * 100} m. Koliko metrov je to?", a * 1000 + b * 100, "m"),
-            (f"Vreča krompirja tehta {a} kg. Koliko gramov je to?", a * 1000, "g"),
-            (f"V vrču je {a} l soka. Koliko kozarcev po 2 dl napolnimo?", a * 5, ""),
-            (f"Film traja {a % 2 + 1} h {b * 5} min. Koliko minut traja?", (a % 2 + 1) * 60 + b * 5, "min"),
-            (f"Desko dolgo {a} m razžagamo na kose po 50 cm. Koliko kosov dobimo?", a * 2, ""),
-            (f"Za {a} € kupimo čokolade po 50 centov. Koliko čokolad kupimo?", a * 2, ""),
-            (f"Paket moke tehta 1 kg. Za palačinke porabimo {b * 100} g. Koliko gramov ostane?", 1000 - b * 100, "g"),
-            (f"Odmor traja {b * 5} min. Koliko sekund je to?", b * 300, "s"),
-            (f"Nina je stara {a + 4} let. Koliko mesecev je to?", (a + 4) * 12, "mesecev"),
-            (f"Steklenica ima 1 l vode. Popijemo {b} dl. Koliko dl ostane?", 10 - b, "dl"),
-            (f"Miza je dolga {a} m {b * 10} cm. Koliko centimetrov je to?", a * 100 + b * 10, "cm"),
-            (f"Zabojnik tehta {a} t. Koliko kilogramov je to?", a * 1000, "kg"),
-        ))
-    if kind == 'perimeter':
-        a, b = r(2, 20), r(2, 20)
-        if a == b:
-            return f"Kvadrat ima stranico {a} cm. Koliko meri njegov obseg?", 4 * a, "cm"
-        return f"Pravokotnik ima stranici {a} cm in {b} cm. Koliko meri njegov obseg?", 2 * (a + b), "cm"
-    if kind == 'order':
-        a, b, c = r(2, 50), r(2, 10), r(2, 10)
-        return random.choice(((f"{a} + {b} · {c} = ?", a + b * c),
-                              (f"{b * c} : {c} + {a} = ?", b + a),
-                              (f"({a % 20 + 1} + {b}) · {c} = ?", (a % 20 + 1 + b) * c)))[0:2] + ("",)
-    if kind == 'round':
-        n = r(1001, 9999)
-        name, p = random.choice((("desetice", 10), ("stotice", 100), ("tisočice", 1000)))
-        return f"Zaokroži število {fmt(n)} na {name}.", (n + p // 2) // p * p, ""
+        a = r(3, QUIZ_MAX)
+        b = r(1, a - 1)
+        return f"{a} - {b} = ?", a - b, ""
+    if kind == 'three':
+        a, b = r(1, 12), r(1, 10)
+        c = r(1, min(10, QUIZ_MAX - a - b))
+        return random.choice(((f"{a} + {b} + {c} = ?", a + b + c), (f"{a + b + c} - {b} - {c} = ?", a))) + ("",)
     if kind == 'missing':
-        a, b = r(100, 899), r(100, 899)
-        k, m = r(2, 10), r(2, 10)
-        return random.choice(((f"Katero število manjka?   □ + {b} = {a + b}", a),
-                              (f"Katero število manjka?   {k} · □ = {k * m}", m),
-                              (f"Katero število manjka?   {a + b} - □ = {a}", b)))[0:2] + ("",)
-    if kind == 'seq':
-        a, d = r(2, 50), r(2, 12)
-        if random.random() < 0.5:
-            nums = [a + d * i for i in range(5)]
-        else:
-            a += d * 5
-            nums = [a - d * i for i in range(5)]
-        return f"Nadaljuj zaporedje:   {', '.join(map(str, nums[:4]))}, ?", nums[4], ""
-    if kind == 'place':
-        n = r(1000, 99999)
-        name, p = random.choice((("enic", 1), ("desetic", 10), ("stotic", 100), ("tisočic", 1000)))
-        return random.choice((
-            (f"Katera števka je na mestu {name} v številu {fmt(n)}?", n // p % 10, ""),
-            (f"Koliko vseh {name} je v številu {fmt(n)}?", n // p, ""),
-        ))
-    k, m = r(2, 6), r(5, 8)
-    a, b, c = r(30, 90), r(5, 25), r(5, 25)
-    p, n = r(2, 9), r(5, 12)
-    pages, read = r(120, 400), r(20, 110)
+        c = r(5, QUIZ_MAX)
+        a = r(1, c - 1)
+        return random.choice(((f"{a} + ? = {c}", c - a), (f"? + {a} = {c}", c - a),
+                              (f"{c} - ? = {a}", c - a), (f"? - {a} = {c - a}", c))) + ("",)
+    return make_word_problem()
+
+
+def make_word_problem():
+    r = random.randint
+    (A, ga), (B, gb) = random.sample(QUIZ_NAMES, 2)
+    obj = random.choice(QUIZ_NOUNS)
+    many = obj[3]
+    a = r(4, QUIZ_MAX - 3)
+    b = r(2, QUIZ_MAX - a)         # a + b <= 30
+    s = r(2, a - 1)                # a - s >= 1
+    imel = "imela" if ga == 'f' else "imel"
+    ji = "ji" if ga == 'f' else "mu"
+    star = "stara" if ga == 'f' else "star"
+    years = ('leto', 'leti', 'leta', 'let')
     return random.choice((
-        (f"V razredu je {k * m} učencev. Učiteljica jih razdeli v skupine po {k}. Koliko je skupin?", m, ""),
-        (f"Zvezek stane {p} €. Koliko stane {n} zvezkov?", p * n, "€"),
-        (f"Na kmetiji je {n} krav. Koliko nog imajo vse krave skupaj?", 4 * n, ""),
-        (f"Na dvorišču je {n} kokoši. Koliko nog imajo vse kokoši skupaj?", 2 * n, ""),
-        (f"Jan je imel {a} sličic. Prijatelju jih je podaril {b}. Koliko sličic mu je ostalo?", a - b, ""),
-        (f"Na avtobusu je {a} potnikov. Na postaji jih {b} izstopi in {c} vstopi. Koliko potnikov je zdaj na avtobusu?",
-         a - b + c, ""),
-        (f"Teden ima 7 dni. Koliko dni je v {n} tednih?", 7 * n, ""),
-        (f"Knjiga ima {pages} strani. Lana je prebrala {read} strani. Koliko strani mora še prebrati?", pages - read, ""),
-        (f"Mama je kupila {n} jabolk po {p * 10} centov. Koliko centov je plačala?", n * p * 10, "centov"),
-        (f"Lan ima {a} €. Kupi žogo za {b} €. Koliko evrov mu ostane?", a - b, "€"),
-        (f"Na vsaki od {k} polic je {n} knjig. Koliko je vseh knjig?", k * n, ""),
-        (f"Ema je stara {n} let, njen dedek pa {m}-krat toliko. Koliko let je star dedek?", n * m, ""),
-        (f"Ura kaže {n} h. Koliko bo ura čez {k} h?", n + k, "h"),
-        (f"V vrtcu je {a} otrok. Deklic je {b}. Koliko je dečkov?", a - b, ""),
-        (f"Pek je spekel {a + b + c} žemelj. Zjutraj jih je prodal {a}, popoldne {b}. Koliko jih je ostalo?", c, ""),
-        (f"Trikotnik ima vse stranice dolge {n} cm. Koliko meri njegov obseg?", 3 * n, "cm"),
-        (f"Kokoš znese {p} jajc na teden. Koliko jajc znese v {n} tednih?", p * n, ""),
-        (f"V avtobusu je {a} potnikov. Koliko potnikov je v {k} takih avtobusih?", a * k, ""),
-        (f"Žiga je star {n} let. Koliko bo star čez {m} let?", n + m, ""),
-        (f"Na dvorišču je {n} dvokoles in {p + 3} triciklov. Koliko koles imajo vsi skupaj?", 2 * n + 3 * (p + 3), ""),
-        (f"Kvadrat ima obseg {4 * n} cm. Kako dolga je njegova stranica?", n, "cm"),
-        (f"Leto ima 12 mesecev. Koliko mesecev je v {k} letih?", 12 * k, ""),
-        (f"Koliko je {k}-krat večje od {a}?", k * a, ""),
+        (f"{A} ima {count(a, obj)}. Dobi jih še {b}. Koliko {many} ima zdaj?", a + b, ""),
+        (f"{A} ima {count(a, obj)}, {B} pa {count(b, obj)}. Koliko {many} imata skupaj?", a + b, ""),
+        (f"{A} najprej najde {count(a, obj)}, potem pa še {count(b, obj)}. Koliko {many} najde vsega skupaj?", a + b, ""),
+        (f"{A} ima {count(a, obj)}. Podari jih {s}. Koliko {many} {ji} ostane?", a - s, ""),
+        (f"{A} ima {count(a, obj)}. Izgubi jih {s}. Koliko {many} ima še?", a - s, ""),
+        (f"{A} ima {count(a, obj)}, {B} pa {count(s, obj)}. Koliko {many} ima {A} več kot {B}?", a - s, ""),
+        (f"{A} ima {count(s, obj)}. Koliko {many} {ji} manjka, da jih bo {imel} {a}?", a - s, ""),
+        (f"{A} ima {a} €. Kupi igračo za {s} €. Koliko evrov ima še?", a - s, "€"),
+        (f"{A} ima {a} €, {B} pa {b} €. Koliko evrov imata skupaj?", a + b, "€"),
+        (f"Knjiga ima {count(a + b, ('stran', 'strani', 'strani', 'strani'))}. {A} je prebral{'a' if ga == 'f' else ''} "
+         f"že {count(a, ('stran', 'strani', 'strani', 'strani'))}. Koliko strani mora še prebrati?", b, ""),
+        (f"{A} je {star} {count(a, years)}. Koliko let bo {star} čez {count(b, years)}?", a + b, ""),
+        (f"{A} je {star} {count(a, years)}. Koliko let je bil{'a' if ga == 'f' else ''} {star} pred {s} {'letoma' if s == 2 else 'leti'}?", a - s, ""),
+        (f"{A} se igra {count(a, ('minuto', 'minuti', 'minute', 'minut'))}, {B} pa {count(b, ('minuto', 'minuti', 'minute', 'minut'))}. "
+         f"Koliko minut se igrata skupaj?", a + b, "min"),
+        (f"Mislim si število. Če mu prištejem {b}, dobim {a + b}. Katero število si mislim?", a, ""),
+        (f"Mislim si število. Če od njega odštejem {s}, dobim {a - s}. Katero število si mislim?", a, ""),
     ))
 
 
-# multiple choice estimates: (question, right answer, wrong answers); 3 of the wrong ones are shown
-ESTIMATES = (
-    ("Približno koliko je dolg en korak?", "1 m", ("1 cm", "1 dm", "10 m", "1 km")),
-    ("Približno koliko je dolg svinčnik?", "15 cm", ("15 mm", "15 m", "150 m", "15 km")),
-    ("Približno koliko je visoka učilnica?", "3 m", ("3 cm", "3 dm", "30 m", "3 km")),
-    ("Približno koliko je širok noht na mezincu?", "1 cm", ("1 mm", "1 dm", "1 m", "10 m")),
-    ("Približno koliko je dolgo nogometno igrišče?", "100 m", ("100 cm", "100 mm", "10 km", "100 km")),
-    ("Približno koliko je visok odrasel človek?", "170 cm", ("17 cm", "170 mm", "17 m", "170 m")),
-    ("Približno koliko je debel zvezek?", "5 mm", ("5 cm", "5 dm", "5 m", "50 cm")),
-    ("Približno koliko poti narediš peš v 15 minutah?", "1 km", ("1 m", "10 m", "1 dm", "100 km")),
-    ("Približno koliko je dolga šolska klop?", "120 cm", ("12 cm", "12 mm", "12 m", "120 m")),
-    ("Približno koliko tehta jabolko?", "200 g", ("2 g", "2 kg", "20 kg", "200 kg")),
-    ("Približno koliko tehta učenec 4. razreda?", "35 kg", ("35 g", "350 g", "350 kg", "3 t")),
-    ("Približno koliko tehta osebni avtomobil?", "1 t", ("1 kg", "10 kg", "100 g", "100 t")),
-    ("Približno koliko tehta list papirja?", "5 g", ("5 kg", "500 g", "50 kg", "5 t")),
-    ("Približno koliko tehta liter mleka?", "1 kg", ("1 g", "10 g", "10 kg", "1 t")),
-    ("Približno koliko tehta slon?", "5 t", ("5 kg", "50 kg", "50 g", "500 g")),
-    ("Približno koliko tehta šolska torba s knjigami?", "5 kg", ("5 g", "50 g", "500 kg", "5 t")),
-    ("Približno koliko vode gre v kozarec?", "2 dl", ("2 ml", "2 l", "20 l", "2 hl")),
-    ("Približno koliko vode gre v vedro?", "10 l", ("10 ml", "10 dl", "1 dl", "10 hl")),
-    ("Približno koliko vode gre v kopalno kad?", "200 l", ("200 ml", "2 dl", "2 l", "20 ml")),
-    ("Približno koliko zdravila gre na čajno žličko?", "5 ml", ("5 l", "5 dl", "50 l", "5 hl")),
-    ("Približno koliko mleka je v plastenki iz trgovine?", "1 l", ("1 ml", "10 ml", "100 l", "1 hl")),
-    ("Približno koliko časa traja šolska ura?", "45 min", ("45 s", "45 h", "4 dni", "4 s")),
-    ("Približno koliko časa si umivaš zobe?", "2 min", ("2 s", "2 h", "2 dni", "20 h")),
-    ("Približno koliko časa potrebuješ, da poveš svoje ime?", "1 s", ("1 min", "1 h", "1 dan", "10 min")),
-    ("Približno koliko časa trajajo poletne počitnice?", "2 meseca", ("2 dni", "2 h", "2 min", "2 leti")),
-    ("Približno koliko časa spiš ponoči?", "9 h", ("9 min", "9 s", "9 dni", "90 h")),
-    ("Približno koliko časa traja nogometna tekma?", "90 min", ("90 s", "90 h", "9 min", "9 dni")),
-    # more lengths
-    ("Približno koliko je dolga dlan odraslega?", "2 dm", ("2 mm", "2 m", "20 m", "2 km")),
-    ("Približno koliko je visoka miza?", "75 cm", ("75 mm", "75 m", "7 cm", "750 m")),
-    ("Približno koliko je visoka hiša z dvema nadstropjema?", "8 m", ("8 cm", "8 dm", "80 m", "8 km")),
-    ("Približno koliko je dolga mravlja?", "5 mm", ("5 cm", "5 dm", "5 m", "50 cm")),
-    ("Približno koliko je široka vrata?", "90 cm", ("9 cm", "90 mm", "9 m", "90 m")),
-    ("Približno koliko je dolg šolski avtobus?", "12 m", ("12 cm", "12 dm", "120 m", "12 km")),
-    ("Približno koliko je visoka žirafa?", "5 m", ("5 cm", "5 dm", "50 m", "500 m")),
-    ("Približno koliko je visok Triglav?", "2864 m", ("2864 cm", "2864 km", "286 m", "28 m")),
-    ("Približno koliko je od Ljubljane do Maribora?", "130 km", ("130 m", "13 m", "1300 km", "130 cm")),
-    ("Približno koliko je dolg kovanec za 1 €?", "2 cm", ("2 mm", "2 dm", "2 m", "20 cm")),
-    ("Približno koliko je dolga radirka?", "4 cm", ("4 mm", "4 dm", "4 m", "40 cm")),
-    ("Približno koliko je dolga tabla v učilnici?", "4 m", ("4 cm", "4 dm", "40 m", "4 km")),
-    ("Približno koliko je dolg olimpijski bazen?", "50 m", ("50 cm", "5 m", "500 m", "50 km")),
-    ("Približno koliko je dolg list A4?", "30 cm", ("30 mm", "3 cm", "3 m", "30 m")),
-    ("Približno koliko je visok stol?", "45 cm", ("45 mm", "4 cm", "45 m", "450 cm")),
-    ("Približno koliko je dolg krokodil?", "4 m", ("4 cm", "4 dm", "40 m", "4 km")),
-    # more masses
-    ("Približno koliko tehta čokolada?", "100 g", ("100 kg", "1 g", "10 kg", "1 t")),
-    ("Približno koliko tehta kokošje jajce?", "60 g", ("6 g", "60 kg", "6 kg", "600 g")),
-    ("Približno koliko tehta mačka?", "4 kg", ("4 g", "40 g", "400 kg", "4 t")),
-    ("Približno koliko tehta kolo?", "15 kg", ("15 g", "150 g", "150 kg", "15 t")),
-    ("Približno koliko tehta svinčnik?", "5 g", ("5 kg", "50 kg", "5 dag", "5 t")),
-    ("Približno koliko tehta vreča krompirja?", "10 kg", ("10 g", "10 dag", "100 kg", "10 t")),
-    ("Približno koliko tehta odrasel konj?", "500 kg", ("500 g", "50 g", "5 kg", "50 t")),
-    ("Približno koliko tehta polna cisterna tovornjaka?", "30 t", ("30 g", "30 kg", "3 kg", "300 g")),
-    ("Približno koliko tehta banana?", "15 dag", ("15 g", "15 kg", "150 kg", "15 t")),
-    ("Približno koliko tehta kovanec za 1 €?", "7 g", ("7 kg", "70 kg", "7 dag", "7 t")),
-    ("Približno koliko tehta hlebec kruha?", "1 kg", ("1 g", "10 g", "100 kg", "1 t")),
-    ("Približno koliko tehta miš?", "20 g", ("20 kg", "2 kg", "200 kg", "2 t")),
-    # more volumes
-    ("Približno koliko vode je v plastenki za šolsko torbo?", "5 dl", ("5 ml", "5 l", "50 l", "5 hl")),
-    ("Približno koliko soka gre v skodelico?", "2 dl", ("2 ml", "20 l", "2 l", "2 hl")),
-    ("Približno koliko goriva gre v rezervoar avtomobila?", "50 l", ("50 ml", "5 dl", "500 l", "5 ml")),
-    ("Približno koliko juhe je v polni žlici?", "10 ml", ("10 l", "10 dl", "10 hl", "100 l")),
-    ("Približno koliko vode gre v lonec za juho?", "5 l", ("5 ml", "5 dl", "50 hl", "500 l")),
-    ("Približno koliko vode je v sodu?", "2 hl", ("2 ml", "2 dl", "2 l", "20 ml")),
-    ("Približno koliko vode gre v zalivalko?", "10 l", ("10 ml", "10 dl", "10 hl", "100 hl")),
-    ("Približno koliko vode popiješ na dan?", "1 l", ("1 ml", "10 ml", "10 l", "1 hl")),
-    ("Približno koliko vode je v kapljici?", "1 ml", ("1 l", "1 dl", "1 hl", "10 l")),
-    # more times
-    ("Približno koliko časa traja odmor med urami?", "5 min", ("5 s", "5 h", "5 dni", "50 h")),
-    ("Približno koliko časa traja en vdih?", "3 s", ("3 min", "3 h", "3 dni", "30 min")),
-    ("Približno koliko časa traja risanka?", "20 min", ("20 s", "20 h", "20 dni", "2 s")),
-    ("Približno koliko časa traja pouk v šoli?", "5 h", ("5 s", "5 min", "5 dni", "50 h")),
-    ("Približno koliko časa se kuhajo testenine?", "10 min", ("10 s", "10 h", "10 dni", "1 s")),
-    ("Približno koliko časa traja šolsko leto?", "10 mesecev", ("10 dni", "10 h", "10 min", "10 let")),
-    ("Približno koliko časa potrebuješ, da prešteješ do 10?", "5 s", ("5 min", "5 h", "5 dni", "50 min")),
-    ("Približno koliko časa raste drevo, da je visoko kot hiša?", "20 let", ("20 dni", "20 h", "20 min", "20 s")),
-    ("Približno koliko časa traja vožnja z avtom od Ljubljane do Kopra?", "1 h", ("1 s", "1 min", "1 dan", "10 dni")),
-    # money
-    ("Približno koliko stane kruh?", "3 €", ("3 centi", "300 €", "3000 €", "30 000 €")),
-    ("Približno koliko stane kolo?", "300 €", ("3 €", "30 centov", "3 centi", "300 000 €")),
-    ("Približno koliko stane žvečilni gumi?", "50 centov", ("50 €", "500 €", "5000 €", "50 000 €")),
-    ("Približno koliko stane nov avtomobil?", "20 000 €", ("20 €", "200 €", "20 centov", "2 €")),
-    # not estimates, but quick facts from the 4th grade
-    ("Koliko centimetrov ima en meter?", "100", ("10", "1000", "60", "12")),
-    ("Koliko gramov ima en kilogram?", "1000", ("10", "100", "60", "24")),
-    ("Koliko minut ima ena ura?", "60", ("100", "10", "24", "12")),
-    ("Koliko ur ima en dan?", "24", ("12", "60", "100", "10")),
-    ("Koliko decilitrov ima en liter?", "10", ("100", "1000", "60", "12")),
-    ("Koliko metrov ima en kilometer?", "1000", ("100", "10", "60", "10 000")),
-    ("Koliko dni ima navadno leto?", "365", ("360", "100", "300", "52")),
-    ("Koliko kilogramov ima ena tona?", "1000", ("100", "10", "10 000", "60")),
-    ("Koliko je 1/2 ure?", "30 min", ("50 min", "20 min", "15 min", "12 min")),
-    ("Koliko je 1/4 ure?", "15 min", ("25 min", "4 min", "40 min", "30 min")),
-    ("Koliko je pol kilograma?", "500 g", ("50 g", "5 g", "200 g", "1500 g")),
-    ("Koliko je pol litra?", "5 dl", ("50 dl", "2 dl", "500 l", "1 dl")),
-    ("Koliko je 3/4 ure?", "45 min", ("34 min", "30 min", "75 min", "15 min")),
-    ("Koliko je 3/4 kilograma?", "750 g", ("340 g", "75 g", "250 g", "300 g")),
-    ("Koliko je 2/5 od 20?", "8", ("4", "10", "40", "5")),
-    ("Koliko je 3/10 od 50?", "15", ("5", "30", "35", "10")),
-    ("Kateri ulomek je večji?", "3/4", ("1/4", "2/4", "1/2", "3/8")),
-    ("Kateri ulomek je enak 1/2?", "4/8", ("1/4", "2/3", "3/8", "5/8")),
-    ("Kateri ulomek pomeni tri četrtine?", "3/4", ("4/3", "1/3", "3/10", "1/4")),
-    ("Koliko osmin ima cela pica?", "8", ("4", "6", "10", "16")),
-    ("Koliko oglišč ima kocka?", "8", ("6", "12", "4", "10")),
-    ("Koliko ploskev ima kocka?", "6", ("8", "12", "4", "5")),
-    ("Koliko robov ima kocka?", "12", ("6", "8", "4", "10")),
-    ("Katero telo se lahko kotali v vse smeri?", "krogla", ("kocka", "kvader", "piramida", "valj")),
-    ("Kateri lik ima vse štiri stranice enako dolge?", "kvadrat", ("pravokotnik", "trikotnik", "krog", "trapez")),
-    ("Katero število je deljivo z 10?", "740", ("745", "704", "471", "407")),
-    ("Katero število je deljivo s 5?", "385", ("358", "583", "853", "538")),
-    ("Katero število je sodo?", "1 358", ("1 357", "1 573", "1 735", "3 571")),
-    ("Katero število je največje?", "10 001", ("9 999", "10 000", "1 001", "9 909")),
-    ("Katero število je najmanjše?", "1 099", ("1 909", "1 990", "9 011", "1 109")),
-    ("Kateri račun ima rezultat 24?", "48 : 2", ("42 : 2", "36 : 3", "40 : 4", "30 : 2")),
-    ("Kateri račun ima rezultat 7?", "56 : 8", ("54 : 9", "48 : 6", "36 : 6", "45 : 9")),
-    ("Kateri račun ima rezultat 9?", "63 : 7", ("64 : 8", "42 : 7", "56 : 7", "48 : 8")),
-    ("Kateri račun ima rezultat 12?", "60 : 5", ("50 : 5", "40 : 5", "70 : 5", "36 : 4")),
-)
+class QuizSlot:
+    """One player's part of a math break: their own question, digit wheels and tries."""
 
-
-def make_estimate():
-    """A multiple choice estimate: (text, four options, index of the right one)."""
-    text, right, wrong = random.choice(ESTIMATES)
-    options = random.sample(wrong, 3) + [right]
-    random.shuffle(options)
-    return text, options, options.index(right)
-
-
-class Quiz:
-    """A math break: QUIZ_QUESTIONS questions, answered on a row of digit wheels or by picking one of four
-    options, so any controller can enter them."""
-
-    def __init__(self):
+    def __init__(self, player):
+        self.player = player
         self.done = 0
-        # at least one estimate per break
-        self.kinds = ['choice'] + [random.choice(('num', 'num', 'choice')) for _ in range(QUIZ_QUESTIONS - 1)]
-        random.shuffle(self.kinds)
-        self.seen = set()
+        self.msg = None         # [text, color]
         self.new_question()
 
     def new_question(self):
-        self.options = None     # set for multiple choice; then answer and choice are option indices
-        if self.kinds[self.done] == 'choice':
-            self.text = None
-            while self.text is None or self.text in self.seen:
-                self.text, self.options, self.answer = make_estimate()
-            self.seen.add(self.text)
-            self.unit = ""
-        else:
-            self.text, self.answer, self.unit = make_question()
-        self.choice = 0
-        self.wrong = set()      # options already picked wrongly
+        self.text, self.answer, self.unit = make_question()
         self.digits = [0] * QUIZ_DIGITS
         self.cursor = QUIZ_DIGITS - 1
         self.tries = 0
-        self.solved = 0.0       # counts down after a correct answer, then the next question or the game
+        self.solved = 0.0       # counts down after a correct answer, then the next question
+
+    def finished(self):
+        return self.done >= QUIZ_QUESTIONS
 
     def value(self):
-        if self.options:
-            return self.choice
         return int("".join(map(str, self.digits)))
 
-    def max_tries(self):
-        return QUIZ_CHOICE_TRIES if self.options else QUIZ_TRIES
-
-    def solution(self):
-        if self.options:
-            return f"{'abcd'[self.answer]}) {self.options[self.answer]}"
-        return fmt(self.answer) + (f" {self.unit}" if self.unit else "")
-
-    def type_digit(self, d):   # keyboard: digits shift in from the right like a calculator, or 1-4 pick an option
-        if self.options:
-            if 1 <= d <= len(self.options):
-                self.choice = d - 1
-        else:
-            self.digits = self.digits[1:] + [d]
+    def type_digit(self, d):   # keyboard: digits shift in from the right like a calculator
+        self.digits = self.digits[1:] + [d]
 
     def backspace(self):
-        if not self.options:
-            self.digits = [0] + self.digits[:-1]
+        self.digits = [0] + self.digits[:-1]
+
+
+class Quiz:
+    """A math break: every player answers QUIZ_QUESTIONS questions of their own on a row of digit wheels,
+    so any controller can enter them."""
+
+    def __init__(self, players):
+        self.slots = [QuizSlot(p) for p in players]
 
 
 # ---------------------------------------------------------------- sound
@@ -2346,7 +2058,6 @@ class Game:
         self.packet_timer = 0.0
         self.quiz = None
         self.quiz_clock = 0.0    # seconds played since the last math question
-        self.quiz_msg = None     # [text, color]
         self.track = None
         self.spectators = []
         self.gibs = []       # [x, y, vx, vy, z, vz, angle, spin, surf] flying limbs
@@ -2529,8 +2240,7 @@ class Game:
             self.update_quiz(dt)
             return
         if self.quiz_clock >= QUIZ_INTERVAL and self.at_break():
-            self.quiz = Quiz()
-            self.quiz_msg = None
+            self.quiz = Quiz([p for p in self.players if p.pad_id in self.pads])
             self.sounds.play('wave')
             return
 
@@ -2639,62 +2349,67 @@ class Game:
 
     def at_break(self):
         """Moments where a math question doesn't interrupt the action."""
+        if not any(p.pad_id in self.pads for p in self.players):
+            return False   # nobody to ask yet
         if self.state in ('lobby', 'roundover', 'matchover', 'coopover'):
             return True
         return (self.mode in HORDE_MODES and self.state == 'play' and self.wave_break > 0
                 and not self.ghouls and self.wave_to_spawn == 0 and self.ending is None)
 
+    def quiz_slots(self):
+        """Slots whose player can answer; a player whose pad is gone doesn't hold up the game."""
+        return [sl for sl in self.quiz.slots if sl.player.pad_id in self.pads and not sl.finished()]
+
     def update_quiz(self, dt):
-        q = self.quiz
-        if q.solved > 0:
-            q.solved -= dt
-            if q.solved <= 0:
-                q.done += 1
-                self.quiz_msg = None
-                if q.done >= QUIZ_QUESTIONS:
-                    self.quiz = None
-                    self.quiz_clock = 0.0
-                else:
-                    q.new_question()
+        slots = self.quiz_slots()
+        if not slots:
+            self.quiz = None
+            self.quiz_clock = 0.0
             return
-        # anyone can answer: every connected pad and both keyboard halves
-        for pad in self.pads.values():
-            pr = pad.pressed
-            if q.options:   # a 2 x 2 grid of options
-                if pr & {'up', 'down'}:
-                    q.choice ^= 2
-                if pr & {'left', 'right'}:
-                    q.choice ^= 1
-            elif 'up' in pr:
-                q.digits[q.cursor] = (q.digits[q.cursor] + 1) % 10
-            if 'down' in pr and not q.options:
-                q.digits[q.cursor] = (q.digits[q.cursor] - 1) % 10
-            if 'left' in pr and not q.options:
-                q.cursor = max(0, q.cursor - 1)
-            if 'right' in pr and not q.options:
-                q.cursor = min(QUIZ_DIGITS - 1, q.cursor + 1)
+        for sl in slots:
+            if sl.solved > 0:
+                sl.solved -= dt
+                if sl.solved <= 0:
+                    sl.done += 1
+                    sl.msg = None
+                    if not sl.finished():
+                        sl.new_question()
+                continue
+            pr = self.pads[sl.player.pad_id].pressed
+            if 'up' in pr:
+                sl.digits[sl.cursor] = (sl.digits[sl.cursor] + 1) % 10
+            if 'down' in pr:
+                sl.digits[sl.cursor] = (sl.digits[sl.cursor] - 1) % 10
+            if 'left' in pr:
+                sl.cursor = max(0, sl.cursor - 1)
+            if 'right' in pr:
+                sl.cursor = min(QUIZ_DIGITS - 1, sl.cursor + 1)
             if pr & {'up', 'down', 'left', 'right'}:
                 self.sounds.play('empty')
             if pr & {'a', 'start'}:
-                self.submit_quiz()
-                return
+                self.submit_quiz(sl)
+        if self.state != 'lobby':
+            self.claim_orphans()   # after the answers, so the claiming press isn't taken as one
 
-    def submit_quiz(self):
-        q = self.quiz
-        if q.value() == q.answer:
-            q.solved = 1.5
-            self.quiz_msg = [random.choice(("Pravilno! Bravo!", "Odlično!", "Pravilno, kar tako naprej!")), (120, 230, 120)]
+    def quiz_keyboard_slot(self):
+        """Typed digits go to the first keyboard player still answering."""
+        return next((sl for sl in self.quiz_slots() if sl.player.pad_id in ('kb1', 'kb2') and sl.solved <= 0), None)
+
+    def submit_quiz(self, sl):
+        if sl.value() == sl.answer:
+            sl.solved = 1.5
+            sl.msg = [random.choice(("Pravilno! Bravo!", "Odlično!", "Pravilno, kar tako naprej!")), (120, 230, 120)]
             self.sounds.play('pickup')
             return
-        q.tries += 1
-        q.wrong.add(q.value())
+        sl.tries += 1
         self.sounds.play('hit')
-        if q.tries >= q.max_tries():
-            self.quiz_msg = [f"Pravilni odgovor je {q.solution()}. Poskusi še to nalogo.", (255, 200, 90)]
-            q.new_question()
+        if sl.tries >= QUIZ_TRIES:
+            sol = f"{sl.answer}" + (f" {sl.unit}" if sl.unit else "")
+            sl.msg = [f"Pravilno je {sol}. Poskusi še to nalogo.", (255, 200, 90)]
+            sl.new_question()
         else:
-            left = q.max_tries() - q.tries
-            self.quiz_msg = [f"Ni pravilno. Poskusi znova! Še {left} poskus{'a' if left == 2 else ''}.", (255, 110, 90)]
+            left = QUIZ_TRIES - sl.tries
+            sl.msg = [f"Ni pravilno. Še {left} poskus{'a' if left == 2 else ''}.", (255, 110, 90)]
 
     def update_lobby(self):
         for pad in self.pads.values():
@@ -4904,68 +4619,77 @@ class Game:
                 cur = test
         return lines + [cur]
 
+    def quiz_cards(self):
+        """Card rects for the math break, one per player: 1, 2, 3 in a row, then 2 x 2 or 3 x 2."""
+        n = len(self.quiz.slots)
+        cols = {1: 1, 2: 2, 4: 2}.get(n, 3)
+        rows = (n + cols - 1) // cols
+        gap, top, bottom = 16, 95, 650
+        w = min(900, (W - 40 - (cols - 1) * gap) // cols)
+        h = min(420, (bottom - top - (rows - 1) * gap) // rows)
+        y0 = top + (bottom - top - rows * h - (rows - 1) * gap) // 2
+        rects = []
+        for i in range(n):
+            row, col = divmod(i, cols)
+            in_row = min(cols, n - row * cols)
+            x0 = W // 2 - (in_row * w + (in_row - 1) * gap) // 2
+            rects.append(pygame.Rect(x0 + col * (w + gap), y0 + row * (h + gap), w, h))
+        return rects
+
+    def quiz_font(self, card, text):
+        # big for short sums and wide cards, smaller for word problems in narrow ones
+        fits = card.w >= 600 or self.font_med.size(text)[0] <= card.w - 30
+        return self.font_med if fits else self.font_small
+
     def draw_quiz(self):
-        q = self.quiz
         self.dim(190)
-        panel = pygame.Rect(W // 2 - 500, 110, 1000, 500)
-        pygame.draw.rect(self.screen, (28, 32, 44), panel, border_radius=18)
-        pygame.draw.rect(self.screen, (240, 210, 110), panel, 3, border_radius=18)
-        self.text("MATEMATIČNI ODMOR", self.font_med, (240, 210, 110), (W // 2, 160))
-        self.text(f"Naloga {q.done + 1} od {QUIZ_QUESTIONS}", self.font_tiny, (190, 190, 200), (panel.right - 90, 140), shadow=False)
-        lines = self.wrap(q.text, self.font_med, 900)
-        y = 250 - (len(lines) - 1) * 24
-        for line in lines:
-            self.text(line, self.font_med, (255, 255, 255), (W // 2, y))
-            y += 50
-        if q.options:
-            self.draw_quiz_options(q)
+        self.text("MATEMATIČNI ODMOR", self.font_med, (240, 210, 110), (W // 2, 52))
+        for sl, card in zip(self.quiz.slots, self.quiz_cards()):
+            self.draw_quiz_card(sl, card)
+        self.text("Gor / dol: spremeni števko   •   Levo / desno: izberi mesto   •   A ali START: potrdi",
+                  self.font_hud, (190, 190, 200), (W // 2, 676), shadow=False)
+        self.text("Tipkovnica: številke 0-9, Backspace briše, Enter potrdi", self.font_tiny, (150, 150, 160), (W // 2, 704), shadow=False)
+
+    def draw_quiz_card(self, sl, card):
+        p = sl.player
+        pygame.draw.rect(self.screen, (28, 32, 44), card, border_radius=16)
+        pygame.draw.rect(self.screen, p.color, card, 3, border_radius=16)
+        self.text(p.cname, self.font_hud, p.color, (card.x + 20 + self.font_hud.size(p.cname)[0] // 2, card.y + 22), shadow=False)
+        if sl.finished() or p.pad_id not in self.pads:
+            msg = "Končano! Počakaj ostale." if sl.finished() else "Kontroler ni povezan."
+            self.text(msg, self.font_small, (120, 230, 120) if sl.finished() else (190, 190, 200), card.center, shadow=False)
             return
-        bw, bh, gap = 64, 84, 12
-        unit_w = self.font_med.size(q.unit)[0] + 20 if q.unit else 0
-        x0 = W // 2 - (QUIZ_DIGITS * bw + (QUIZ_DIGITS - 1) * gap + unit_w) // 2
-        by = 360
+        label = f"Naloga {sl.done + 1} od {QUIZ_QUESTIONS}"
+        self.text(label, self.font_tiny, (190, 190, 200), (card.right - 20 - self.font_tiny.size(label)[0] // 2, card.y + 22), shadow=False)
+        big = card.h >= 300
+        bw, bh, gap = (64, 84, 12) if big else (50, 62, 10)
+        by = card.bottom - (60 if big else 50) - bh
+        font = self.quiz_font(card, sl.text)
+        lines = self.wrap(sl.text, font, card.w - 30)
+        lh = font.get_linesize()
+        y = (card.y + 42 + by) // 2 - (len(lines) - 1) * lh // 2
+        for line in lines:
+            self.text(line, font, (255, 255, 255), (card.centerx, y), shadow=False)
+            y += lh
+        unit_w = self.font_med.size(sl.unit)[0] + 20 if sl.unit else 0
+        x0 = card.centerx - (QUIZ_DIGITS * bw + (QUIZ_DIGITS - 1) * gap + unit_w) // 2
         lead = True   # leading zeros are drawn dimmed, so the entered number reads naturally
-        for i, d in enumerate(q.digits):
+        for i, d in enumerate(sl.digits):
             lead = lead and d == 0 and i < QUIZ_DIGITS - 1
             rect = pygame.Rect(x0 + i * (bw + gap), by, bw, bh)
-            sel = i == q.cursor and q.solved <= 0
+            sel = i == sl.cursor and sl.solved <= 0
             pygame.draw.rect(self.screen, (50, 56, 72) if sel else (38, 42, 56), rect, border_radius=10)
             pygame.draw.rect(self.screen, (255, 230, 120) if sel else (90, 96, 112), rect, 3, border_radius=10)
             self.text(str(d), self.font_med, (110, 115, 130) if lead else (255, 255, 255), rect.center, shadow=False)
             if sel and int(self.now * 3) % 2 == 0:
                 for sgn in (-1, 1):   # up / down arrows on the selected digit
-                    ty = rect.centery + sgn * (bh // 2 + 12)
+                    ty = rect.centery + sgn * (bh // 2 + 10)
                     pygame.draw.polygon(self.screen, (255, 230, 120),
-                                        [(rect.centerx - 9, ty - sgn * 5), (rect.centerx + 9, ty - sgn * 5), (rect.centerx, ty + sgn * 5)])
-        if q.unit:
-            self.text(q.unit, self.font_med, (220, 220, 220), (x0 + QUIZ_DIGITS * (bw + gap) + unit_w // 2 - 4, by + bh // 2), shadow=False)
-        if self.quiz_msg:
-            self.text(self.quiz_msg[0], self.font_small, self.quiz_msg[1], (W // 2, 500))
-        self.text("Gor / dol: spremeni števko   •   Levo / desno: izberi mesto   •   A ali START: potrdi",
-                  self.font_hud, (190, 190, 200), (W // 2, 550), shadow=False)
-        self.text("Tipkovnica: številke 0-9, Backspace briše, Enter potrdi", self.font_tiny, (150, 150, 160), (W // 2, 582), shadow=False)
-
-    def draw_quiz_options(self, q):
-        ow, oh = 400, 58
-        for i, opt in enumerate(q.options):
-            rect = pygame.Rect(W // 2 - ow - 10 + (i % 2) * (ow + 20), 325 + (i // 2) * (oh + 14), ow, oh)
-            sel = i == q.choice and q.solved <= 0
-            if q.solved > 0 and i == q.answer:
-                fill, edge, col = (40, 80, 50), (120, 230, 120), (255, 255, 255)
-            elif i in q.wrong:
-                fill, edge, col = (50, 34, 38), (150, 70, 70), (140, 110, 110)
-            elif sel:
-                fill, edge, col = (50, 56, 72), (255, 230, 120), (255, 255, 255)
-            else:
-                fill, edge, col = (38, 42, 56), (90, 96, 112), (220, 220, 220)
-            pygame.draw.rect(self.screen, fill, rect, border_radius=10)
-            pygame.draw.rect(self.screen, edge, rect, 3, border_radius=10)
-            self.text(f"{'abcd'[i]})  {opt}", self.font_med, col, rect.center, shadow=False)
-        if self.quiz_msg:
-            self.text(self.quiz_msg[0], self.font_small, self.quiz_msg[1], (W // 2, 500))
-        self.text("Smeri: izberi odgovor   •   A ali START: potrdi",
-                  self.font_hud, (190, 190, 200), (W // 2, 550), shadow=False)
-        self.text("Tipkovnica: tipke 1-4 izberejo odgovor, Enter potrdi", self.font_tiny, (150, 150, 160), (W // 2, 582), shadow=False)
+                                        [(rect.centerx - 8, ty - sgn * 4), (rect.centerx + 8, ty - sgn * 4), (rect.centerx, ty + sgn * 4)])
+        if sl.unit:
+            self.text(sl.unit, self.font_med, (220, 220, 220), (x0 + QUIZ_DIGITS * (bw + gap) + unit_w // 2 - 4, by + bh // 2), shadow=False)
+        if sl.msg:
+            self.text(sl.msg[0], self.font_hud if big else self.font_tiny, sl.msg[1], (card.centerx, card.bottom - (26 if big else 16)), shadow=False)
 
     def draw_scores(self, y):
         parts = [(f"{p.cname} {p.score}", p.color) for p in self.players]
@@ -5171,7 +4895,7 @@ class Game:
             for _ in range(240):
                 self.update(1 / 60)
                 self.draw()
-        self.quiz = Quiz()
+        self.quiz = Quiz(self.players)
         self.draw()
 
     async def run(self):
@@ -5192,9 +4916,13 @@ class Game:
                         if not WEB:     # in a browser, F11 already makes the page fullscreen
                             pygame.display.toggle_fullscreen()
                     elif self.quiz and len(e.unicode) == 1 and e.unicode in "0123456789":   # top row and keypad
-                        self.quiz.type_digit(int(e.unicode))
+                        sl = self.quiz_keyboard_slot()
+                        if sl:
+                            sl.type_digit(int(e.unicode))
                     elif self.quiz and e.key == pygame.K_BACKSPACE:
-                        self.quiz.backspace()
+                        sl = self.quiz_keyboard_slot()
+                        if sl:
+                            sl.backspace()
                     elif e.key == pygame.K_TAB and self.state == 'lobby' and not self.quiz:
                         self.toggle_mode()
                     elif e.key == pygame.K_ESCAPE:
